@@ -1,0 +1,226 @@
+* {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+}
+
+html {
+    scroll-behavior: smooth;
+}
+
+body {
+    font-family: Inter, system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+    background: #f3f5f8;
+    color: #1f2937;
+    line-height: 1.6;
+    min-height: 100vh;
+}
+
+/* ========== HEADER ========== */
+
+.site-header {
+    background: linear-gradient(135deg, #0f172a, #1e3a5f);
+    color: white;
+    padding: 60px 20px;
+    box-shadow: 0 4px 18px rgba(0,0,0,.15);
+}
+
+.header-content {
+    max-width: 900px;
+    margin: auto;
+    text-align: center;
+}
+
+.site-header h1 {
+    font-size: 46px;
+    font-weight: 800;
+    margin-bottom: 10px;
+    letter-spacing: -0.5px;
+}
+
+.site-header p {
+    font-size: 17px;
+    opacity: .85;
+}
+
+/* ========== LAYOUT ========== */
+
+.main-container {
+    width: 90%;
+    max-width: 1000px;
+    margin: 40px auto 60px;
+}
+
+/* ========== INTRO CARD ========== */
+
+.intro-card {
+    text-align: center;
+    margin-bottom: 36px;
+}
+
+.intro-card h2 {
+    font-size: 24px;
+    color: #0f172a;
+    margin-bottom: 10px;
+}
+
+.intro-card p {
+    font-size: 15px;
+    color: #6b7280;
+    max-width: 650px;
+    margin: 0 auto;
+    line-height: 1.7;
+}
+
+/* ========== CARD BASE ========== */
+
+.card {
+    background: white;
+    border-radius: 16px;
+    padding: 32px;
+    box-shadow: 0 5px 20px rgba(15,23,42,.07);
+    border: 1px solid rgba(15,23,42,.05);
+}
+
+/* ========== PROJECTS GRID ========== */
+
+.projects-grid {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 24px;
+}
+
+.project-card {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    text-align: center;
+    gap: 14px;
+    padding: 36px 24px;
+    border: 2px solid #e5e7eb;
+    border-radius: 16px;
+    background: white;
+    text-decoration: none;
+    color: inherit;
+    transition: all 0.3s ease;
+    position: relative;
+    overflow: hidden;
+}
+
+.project-card:hover {
+    border-color: #1e3a5f;
+    background: #f0f5fb;
+    transform: translateY(-4px);
+    box-shadow: 0 12px 32px rgba(15,23,42,.12);
+}
+
+.project-card:focus-visible {
+    outline: 2px solid #1e3a5f;
+    outline-offset: 2px;
+}
+
+.project-icon {
+    font-size: 44px;
+    line-height: 1;
+}
+
+.project-number {
+    position: absolute;
+    top: 12px;
+    right: 14px;
+    width: 28px;
+    height: 28px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    border-radius: 8px;
+    background: #0f172a;
+    color: white;
+    font-size: 13px;
+    font-weight: 700;
+}
+
+.project-card h3 {
+    font-size: 20px;
+    font-weight: 750;
+    color: #0f172a;
+}
+
+.project-card p {
+    font-size: 13px;
+    color: #6b7280;
+    line-height: 1.6;
+    flex: 1;
+}
+
+.project-tag {
+    display: inline-block;
+    padding: 4px 12px;
+    border-radius: 20px;
+    background: #f0f4fa;
+    color: #1e3a5f;
+    font-size: 11px;
+    font-weight: 700;
+    letter-spacing: 0.5px;
+    text-transform: uppercase;
+}
+
+.project-card:hover .project-tag {
+    background: #1e3a5f;
+    color: white;
+}
+
+/* ========== FOOTER ========== */
+
+.site-footer {
+    padding: 34px 20px;
+    background: #0f172a;
+    color: white;
+    text-align: center;
+}
+
+.site-footer h3 {
+    margin-bottom: 5px;
+    font-size: 20px;
+}
+
+.site-footer p {
+    color: rgba(255,255,255,.8);
+    font-size: 14px;
+}
+
+.footer-small {
+    margin-top: 6px;
+    font-size: 12px !important;
+    opacity: .6;
+}
+
+/* ========== RESPONSIVE ========== */
+
+@media (max-width: 768px) {
+    .site-header { padding: 44px 18px; }
+    .site-header h1 { font-size: 32px; }
+    .main-container { width: 94%; margin-top: 28px; }
+    .card { padding: 24px; }
+    .projects-grid {
+        grid-template-columns: 1fr;
+        gap: 18px;
+    }
+    .project-card {
+        flex-direction: row;
+        text-align: left;
+        padding: 24px 20px;
+        gap: 16px;
+    }
+    .project-icon { font-size: 36px; }
+    .project-card h3 { font-size: 18px; }
+    .project-number { top: 10px; right: 12px; width: 24px; height: 24px; font-size: 11px; }
+}
+
+@media (max-width: 480px) {
+    .site-header h1 { font-size: 26px; }
+    .site-header p { font-size: 14px; }
+    .intro-card h2 { font-size: 20px; }
+    .project-card { padding: 20px 16px; }
+    .project-card h3 { font-size: 16px; }
+}

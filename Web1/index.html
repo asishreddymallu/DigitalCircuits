@@ -1,0 +1,277 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Boolean Logic Solver - Truth Tables, Minterms, Maxterms and Logic Circuits">
+    <title>Boolean Logic Solver</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="header-content">
+        <h1>Boolean Logic Solver</h1>
+        <p>Truth Tables • Boolean Expressions • Minterms • Maxterms</p>
+    </div>
+</header>
+
+<main class="main-container">
+
+    <section class="card input-card">
+        <div class="section-heading">
+            <span class="section-number">1</span>
+            <div>
+                <h2>Enter Boolean Function</h2>
+                <p>Choose an input method and provide your Boolean function.</p>
+            </div>
+        </div>
+
+        <div class="form-group">
+            <label for="inputType">Input Type</label>
+            <select id="inputType">
+                <option value="expression">Boolean Expression</option>                    <option value="minterms">Minterms</option>
+                    <option value="maxterms">Maxterms</option>
+                    <option value="dontCare">Minterms + Don't Cares</option>
+                <option value="truthTable">Truth Table</option>
+            </select>
+        </div>
+
+        <div id="expressionSection" class="input-subsection">
+            <div class="form-group">
+                <label for="expression">Boolean Expression</label>
+                <div class="input-button-row">
+                    <input id="expression" type="text" placeholder="Example: A'B + BC" autocomplete="off">
+                    <button type="button" id="tryExampleBtn" class="input-action-btn" title="Load example expression" aria-label="Load example Boolean expression">Try Example</button>
+                </div>
+                <div class="help-text">
+                    <strong>Supported notation:</strong>
+                    A, B, C &nbsp; + = OR &nbsp; * = AND &nbsp; ^ = XOR &nbsp; ' = NOT &nbsp; ! = NOT &nbsp; () = Grouping
+                    <br>
+                    Examples: <code>A'B + BC</code> &nbsp; <code>(A+B)C</code> &nbsp; <code>A^B</code> (XOR)
+                </div>
+            </div>
+        </div>
+
+        <div id="mintermSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label for="mintermVariables">Number of Variables</label>
+                <select id="mintermVariables">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="minterms">Minterms</label>
+                <input id="minterms" type="text" placeholder="Example: 1,3,5,7" autocomplete="off">
+                <div id="mintermExample" class="help-text"></div>
+            </div>
+        </div>
+
+        <div id="dontCareSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label for="dontCareVariables">Number of Variables</label>
+                <select id="dontCareVariables">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="dontCareMinterms">Minterms (output = 1)</label>
+                <input id="dontCareMinterms" type="text" placeholder="Example: 1,3,5" autocomplete="off">
+                <div id="dontCareMintermExample" class="help-text"></div>
+            </div>
+            <div class="form-group">
+                <label for="dontCares">Don't Cares (output = X)</label>
+                <input id="dontCares" type="text" placeholder="Example: 0,6" autocomplete="off">
+                <div id="dontCareExample" class="help-text"></div>
+            </div>
+            <div class="help-text dont-care-info">
+                <strong>Don't care terms</strong> are input combinations where the output can be either 0 or 1. They are treated as &ldquo;X&rdquo; in the truth table and can be freely set to optimize the simplified expression.
+            </div>
+        </div>
+
+        <div id="maxtermSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label for="maxtermVariables">Number of Variables</label>
+                <select id="maxtermVariables">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label for="maxterms">Maxterms</label>
+                <input id="maxterms" type="text" placeholder="Example: 0,2,4,6" autocomplete="off">
+                <div id="maxtermExample" class="help-text"></div>
+            </div>
+        </div>
+
+        <div id="truthTableSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label for="truthVariables">Number of Variables</label>
+                <select id="truthVariables">
+                    <option value="2">2</option>
+                    <option value="3" selected>3</option>
+                    <option value="4">4</option>
+                    <option value="5">5</option>
+                    <option value="6">6</option>
+                </select>
+            </div>
+            <div id="userTruthTable" class="truth-table-input"></div>
+        </div>
+
+        <button id="solveButton" class="solve-button" type="button" aria-label="Solve Boolean function">
+            <span aria-hidden="true">⚡</span> Solve Boolean Function
+        </button>
+
+        <div id="errorMessage" class="error-message hidden"></div>
+    </section>
+
+    <section id="results" class="results-section hidden">
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">2</span>
+                <div>
+                    <h2>Boolean Function</h2>
+                    <p>Function being evaluated.</p>
+                </div>
+            </div>
+            <div class="expression-row">
+                <div id="originalExpression" class="expression-box"></div>
+                <button type="button" class="copy-btn" title="Copy expression to clipboard" aria-label="Copy expression to clipboard">📋 Copy</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">3</span>
+                <div>
+                    <h2>Truth Table</h2>
+                    <p>Output for every possible input combination.</p>
+                </div>
+            </div>
+            <div id="generatedTruthTable" class="result-table-container"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">4</span>
+                <div>
+                    <h2>Canonical SOP</h2>
+                    <p>Sum of Products representation.</p>
+                </div>
+            </div>
+            <div id="canonicalSOP" class="expression-box"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">5</span>
+                <div>
+                    <h2>Canonical POS</h2>
+                    <p>Product of Sums representation.</p>
+                </div>
+            </div>
+            <div id="canonicalPOS" class="expression-box"></div>
+        </section>            <section class="card simplified-card">
+            <div class="section-heading">
+                <span class="section-number">6</span>
+                <div>
+                    <h2>Simplified Boolean Expression</h2>
+                    <p>Minimum Boolean expression obtained by minimization.</p>
+                </div>
+            </div>
+            <div class="expression-row">
+                <div id="simplifiedExpression" class="expression-box simplified-expression"></div>
+                <button type="button" class="copy-btn" title="Copy simplified expression to clipboard" aria-label="Copy simplified expression to clipboard">📋 Copy</button>
+            </div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">7</span>
+                <div>
+                    <h2>Karnaugh Map</h2>
+                    <p>Visual minimization using grouped cells.</p>
+                </div>
+            </div>
+            <div id="karnaughMap" class="karnaugh-map-container"></div>
+        </section>
+
+        <section id="dontCareResults" class="card hidden">
+            <div class="section-heading">
+                <span class="section-number">8</span>
+                <div>
+                    <h2>Don't Care Summary</h2>
+                    <p>Minterms and don't care terms used in minimization.</p>
+                </div>
+            </div>
+            <div id="dontCareSummary" class="dont-care-summary-box"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">9</span>
+                <div>
+                    <h2>AND / OR / NOT Implementation</h2>
+                    <p>Implementation using basic logic gates.</p>
+                </div>
+            </div>
+            <div id="basicCircuit" class="circuit-container"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">10</span>
+                <div>
+                    <h2>NAND-Only Implementation</h2>
+                    <p>Implementation using only NAND gates.</p>
+                </div>
+            </div>
+            <div id="nandCircuit" class="circuit-container"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">11</span>
+                <div>
+                    <h2>NOR-Only Implementation</h2>
+                    <p>Implementation using only NOR gates.</p>
+                </div>
+            </div>
+            <div id="norCircuit" class="circuit-container"></div>
+        </section>
+
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">12</span>
+                <div>
+                    <h2>Circuit Verification</h2>
+                    <p>All implementations are checked for every possible input combination.</p>
+                </div>
+            </div>
+            <div id="verification" class="verification-container"></div>
+        </section>
+
+    </section>
+</main>
+
+<footer class="site-footer">
+    <h3>Boolean Logic Solver</h3>
+    <p>Digital Circuits Project</p>
+    <p class="footer-small">Truth Tables • Boolean Simplification • Logic Circuits</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

@@ -1,0 +1,181 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Digital Circuits Simulator - Adders, Subtractors, and Multiplexers with interactive truth tables and circuit diagrams">
+    <title>Digital Circuits Simulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="header-content">
+        <h1>Digital Circuits Simulator</h1>
+        <p>Adders • Subtractors • Multiplexers</p>
+    </div>
+</header>
+
+<main class="main-container">
+
+    <!-- STEP 1: Choose Category -->
+    <section id="step1" class="card category-card">
+        <div class="section-heading">
+            <span class="section-number">1</span>
+            <div>
+                <h2>Choose a Circuit Type</h2>
+                <p>Select the category of digital circuit you want to explore.</p>
+            </div>
+        </div>
+        <div class="category-grid">
+            <button class="category-btn" data-category="adder">
+                <span class="category-icon" aria-hidden="true">➕</span>
+                <span class="category-title">Adder</span>
+                <span class="category-desc">Binary addition circuits</span>
+            </button>
+            <button class="category-btn" data-category="subtractor">
+                <span class="category-icon" aria-hidden="true">➖</span>
+                <span class="category-title">Subtractor</span>
+                <span class="category-desc">Binary subtraction circuits</span>
+            </button>
+            <button class="category-btn" data-category="multiplexer">
+                <span class="category-icon" aria-hidden="true">🔀</span>
+                <span class="category-title">Multiplexer</span>
+                <span class="category-desc">Data selector circuits</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- STEP 2: Choose Sub-Circuit (hidden until category selected) -->
+    <section id="step2" class="card hidden">
+        <div class="section-heading">
+            <span class="section-number">2</span>
+            <div>
+                <h2 id="step2Title">Choose a Circuit</h2>
+                <p id="step2Desc">Select the specific circuit variant.</p>
+            </div>
+        </div>
+
+        <!-- Adder Sub-Options -->
+        <div id="adderOptions" class="option-grid hidden">
+            <button class="option-btn" data-circuit="halfAdder">
+                <span class="option-label">Half Adder</span>
+                <span class="option-detail">2 inputs (A, B) → Sum, Carry</span>
+            </button>
+            <button class="option-btn" data-circuit="fullAdder">
+                <span class="option-label">Full Adder</span>
+                <span class="option-detail">3 inputs (A, B, Cin) → Sum, Cout</span>
+            </button>
+            <button class="option-btn" data-circuit="rippleCarryAdder4">
+                <span class="option-label">4-Bit Ripple Carry Adder</span>
+                <span class="option-detail">8 inputs (A[3:0], B[3:0]) → S[3:0], Cout</span>
+            </button>
+        </div>
+
+        <!-- Subtractor Sub-Options -->
+        <div id="subtractorOptions" class="option-grid hidden">
+            <button class="option-btn" data-circuit="halfSubtractor">
+                <span class="option-label">Half Subtractor</span>
+                <span class="option-detail">2 inputs (A, B) → Diff, Borrow</span>
+            </button>
+            <button class="option-btn" data-circuit="fullSubtractor">
+                <span class="option-label">Full Subtractor</span>
+                <span class="option-detail">3 inputs (A, B, Bin) → Diff, Bout</span>
+            </button>
+            <button class="option-btn" data-circuit="rippleBorrowSubtractor4">
+                <span class="option-label">4-Bit Ripple Borrow Subtractor</span>
+                <span class="option-detail">8 inputs (A[3:0], B[3:0]) → D[3:0], Bout</span>
+            </button>
+        </div>
+
+        <!-- Multiplexer Sub-Options -->
+        <div id="multiplexerOptions" class="option-grid hidden">
+            <button class="option-btn" data-circuit="mux2to1">
+                <span class="option-label">2 : 1 MUX</span>
+                <span class="option-detail">3 inputs (I0, I1, S) → Y</span>
+            </button>
+            <button class="option-btn" data-circuit="mux4to1">
+                <span class="option-label">4 : 1 MUX</span>
+                <span class="option-detail">6 inputs (I0–I3, S0, S1) → Y</span>
+            </button>
+            <button class="option-btn" data-circuit="mux8to1">
+                <span class="option-label">8 : 1 MUX</span>
+                <span class="option-detail">11 inputs (I0–I7, S0–S2) → Y</span>
+            </button>
+        </div>
+
+        <button id="backBtn" class="back-button" type="button">
+            ← Back to Categories
+        </button>
+    </section>
+
+    <!-- STEP 3: Circuit Workspace (hidden until sub-circuit selected) -->
+    <section id="step3" class="hidden">
+
+        <div class="workspace-header">
+            <button id="backToStep2" class="back-link" type="button">← Back</button>
+            <h2 id="circuitTitle">Circuit</h2>
+        </div>
+
+        <!-- Input Panel -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">A</span>
+                <div>
+                    <h2>Inputs</h2>
+                    <p>Set the input values for the circuit.</p>
+                </div>
+            </div>
+            <div id="inputPanel" class="input-panel"></div>
+            <p class="live-hint">Toggle any input above — the circuit updates instantly.</p>
+        </section>
+
+        <!-- Truth Table -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">B</span>
+                <div>
+                    <h2>Truth Table</h2>
+                    <p>Output for every possible input combination.</p>
+                </div>
+            </div>
+            <div id="truthTable" class="result-table-container"></div>
+        </section>
+
+        <!-- Circuit Diagram -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">C</span>
+                <div>
+                    <h2>Circuit Diagram</h2>
+                    <p>Interactive schematic with current input values highlighted.</p>
+                </div>
+            </div>
+            <div id="circuitDiagram" class="circuit-container"></div>
+        </section>
+
+        <!-- Boolean Expressions -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">D</span>
+                <div>
+                    <h2>Boolean Expressions</h2>
+                    <p>Logic expressions for each output.</p>
+                </div>
+            </div>
+            <div id="booleanExpressions" class="expressions-container"></div>
+        </section>
+
+    </section>
+
+</main>
+
+<footer class="site-footer">
+    <h3>Digital Circuits Simulator</h3>
+    <p>Adders • Subtractors • Multiplexers</p>
+    <p class="footer-small">Interactive truth tables, circuit diagrams & Boolean expressions</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

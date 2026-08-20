@@ -1,0 +1,158 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="7-Segment Display Simulator - Interactive BCD-to-7-Segment Decoder with Truth Tables and Circuit Diagrams">
+    <title>7-Segment Display Simulator</title>
+    <link rel="stylesheet" href="style.css">
+</head>
+<body>
+
+<header class="site-header">
+    <div class="header-content">
+        <h1>7-Segment Display Simulator</h1>
+        <p>Interactive Display • BCD Input • Truth Tables • Karnaugh Maps</p>
+    </div>
+</header>
+
+<main class="main-container">
+
+    <!-- STEP 1: Choose Mode -->
+    <section id="step1" class="card category-card">
+        <div class="section-heading">
+            <span class="section-number">1</span>
+            <div>
+                <h2>Choose a Mode</h2>
+                <p>Select how you want to interact with the 7-segment display.</p>
+            </div>
+        </div>
+        <div class="category-grid category-grid-2">
+            <button class="category-btn" data-category="interactive">
+                <span class="category-icon" aria-hidden="true">🔢</span>
+                <span class="category-title">Interactive Mode</span>
+                <span class="category-desc">Toggle segments or enter BCD values live</span>
+            </button>
+            <button class="category-btn" data-category="counter">
+                <span class="category-icon" aria-hidden="true">⏱️</span>
+                <span class="category-title">Counter Mode</span>
+                <span class="category-desc">Animated 0–9 counter with circuit diagram</span>
+            </button>
+        </div>
+    </section>
+
+    <!-- STEP 3: Workspace (hidden until mode selected) -->
+    <section id="step3" class="hidden">
+
+        <div class="workspace-header">
+            <button id="backToStep2" class="back-link" type="button">← Back to Modes</button>
+            <h2 id="circuitTitle">7-Segment Display</h2>
+        </div>
+
+        <!-- Interactive Display -->
+        <section id="displaySection" class="card">
+            <div class="section-heading">
+                <span class="section-number">A</span>
+                <div>
+                    <h2>7-Segment Display</h2>
+                    <p id="displayHint">Click segments or use BCD input below to control the display.</p>
+                </div>
+            </div>
+            <div id="segmentDisplay" class="display-container"></div>
+        </section>
+
+        <!-- BCD Input Panel -->
+        <section id="inputSection" class="card">
+            <div class="section-heading">
+                <span class="section-number">B</span>
+                <div>
+                    <h2>BCD Input</h2>
+                    <p>Set the 4-bit BCD input: A (MSB=8), B (4), C (2), D (LSB=1).</p>
+                </div>
+            </div>
+            <div id="bcdInput" class="input-panel"></div>
+            <p id="liveHint" class="live-hint">Toggle any bit above — the display updates instantly.</p>
+        </section>
+
+        <!-- Counter Controls -->
+        <section id="counterSection" class="card hidden">
+            <div class="section-heading">
+                <span class="section-number">C</span>
+                <div>
+                    <h2>Counter Controls</h2>
+                    <p>Start, stop, and adjust the counter speed.</p>
+                </div>
+            </div>
+            <div class="counter-controls">
+                <button id="counterStart" class="counter-btn" type="button">▶ Start</button>
+                <button id="counterStop" class="counter-btn" type="button" disabled>⏸ Stop</button>
+                <button id="counterReset" class="counter-btn" type="button">↺ Reset</button>
+                <div class="speed-control">
+                    <label for="counterSpeed">Speed:</label>
+                    <input id="counterSpeed" type="range" min="200" max="2000" value="800" step="100">
+                    <span id="speedLabel">800ms</span>
+                </div>
+            </div>
+        </section>
+
+        <!-- Truth Table -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number" id="ttSectionNum">C</span>
+                <div>
+                    <h2>Truth Table</h2>
+                    <p>Segment activation for every BCD input (0–9).</p>
+                </div>
+            </div>
+            <div id="truthTable" class="result-table-container"></div>
+        </section>
+
+        <!-- Boolean Expressions -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number" id="exprSectionNum">D</span>
+                <div>
+                    <h2>Boolean Expressions</h2>
+                    <p>Simplified SOP expressions for each segment (a–g).</p>
+                </div>
+            </div>
+            <div id="booleanExpressions" class="expressions-container"></div>
+        </section>
+
+        <!-- Karnaugh Maps -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number" id="kmapSectionNum">E</span>
+                <div>
+                    <h2>Karnaugh Maps</h2>
+                    <p>Visual minimization for each segment output.</p>
+                </div>
+            </div>
+            <div id="karnaughMaps" class="karnaugh-maps-container"></div>
+        </section>
+
+        <!-- Circuit Diagram -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number" id="circuitSectionNum">F</span>
+                <div>
+                    <h2>Circuit Diagram</h2>
+                    <p>BCD-to-7-Segment decoder logic circuit.</p>
+                </div>
+            </div>
+            <div id="circuitDiagram" class="circuit-container"></div>
+        </section>
+
+    </section>
+
+</main>
+
+<footer class="site-footer">
+    <h3>7-Segment Display Simulator</h3>
+    <p>Interactive displays, Karnaugh maps & circuit diagrams</p>
+    <p class="footer-small">BCD Decoder • Segment Truth Tables • Boolean Expressions</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
