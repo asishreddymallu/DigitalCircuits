@@ -1,11 +1,13 @@
-"use strict";
 /* =========================================================
-   BOOLEAN LOGIC SOLVER - FIXED SCHEMATIC CIRCUIT ENGINE
+   BOOLEAN LOGIC SOLVER - STUDIO ENGINE
    - Standard schematic gate geometry (AND, OR, NOT, NAND, NOR)
    - Dynamic channel wire routing with zero overlaps
-   - Accurate port collision boundaries
    - Truth table generation & Quine-McCluskey minimization
    - Complete verification and PNG download export
+   - Live Interactive Signal Probing Engine & Multimeter HUD
+   - Vector Zoom & Pan Controls
+   - Web Audio Studio Sound Effects
+   - Verilog, C, LaTeX & Markdown Code Generation
 ========================================================= */
 /* =========================================================
    DOM ELEMENTS
@@ -30,157 +32,176 @@ const results = document.getElementById("results");
 const errorMessage = document.getElementById("errorMessage");
 const mintermExample = document.getElementById("mintermExample");
 const maxtermExample = document.getElementById("maxtermExample");
-const dontCareMintermExample = document.getElementById("dontCareMintermExample");
 const dontCareExample = document.getElementById("dontCareExample");
+const userTruthTable = document.getElementById("userTruthTable");
+const hudVector = document.getElementById("hudVector");
+const hudOutput = document.getElementById("hudOutput");
+const hudTermCount = document.getElementById("hudTermCount");
+let circuitCounter = 0;
+let currentVariables = [];
+let currentRows = [];
+let currentGraphBasic = null;
+let currentGraphNand = null;
+let currentGraphNor = null;
+let currentProbeState = {};
+const zoomStates = {
+    basicCircuit: { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 },
+    nandCircuit: { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 },
+    norCircuit: { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 }
+};
+function applyZoomPan(containerId) {
+    const container = document.getElementById(containerId);
+    if (!container)
+        return;
+    const svg = container.querySelector("svg");
+    if (!svg)
+        return;
+    const state = zoomStates[containerId];
+    svg.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
+}
+function resetZoomPan(containerId) {
+    zoomStates[containerId] = { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 };
+    applyZoomPan(containerId);
+}
+function initZoomPanControls() {
+    document.querySelectorAll(".zoom-in-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const target = btn.getAttribute("data-target");
+            if (target && zoomStates[target]) {
+                zoomStates[target].scale = Math.min(3.0, zoomStates[target].scale + 0.2);
+                applyZoomPan(target);
+                if (window.StudioFX)
+                    window.StudioFX.click(true);
+            }
+        });
+    });
+    document.querySelectorAll(".zoom-out-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const target = btn.getAttribute("data-target");
+            if (target && zoomStates[target]) {
+                zoomStates[target].scale = Math.max(0.4, zoomStates[target].scale - 0.2);
+                applyZoomPan(target);
+                if (window.StudioFX)
+                    window.StudioFX.click(false);
+            }
+        });
+    });
+    document.querySelectorAll(".zoom-reset-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const target = btn.getAttribute("data-target");
+            if (target)
+                resetZoomPan(target);
+        });
+    });
+    ["basicCircuit", "nandCircuit", "norCircuit"].forEach(id => {
+        const container = document.getElementById(id);
+        if (!container)
+            return;
+        container.addEventListener("wheel", (e) => {
+            e.preventDefault();
+            const delta = e.deltaY < 0 ? 0.1 : -0.1;
+            zoomStates[id].scale = Math.min(3.0, Math.max(0.4, zoomStates[id].scale + delta));
+            applyZoomPan(id);
+        }, { passive: false });
+        container.addEventListener("mousedown", (e) => {
+            if (e.button !== 0)
+                return;
+            zoomStates[id].isDragging = true;
+            zoomStates[id].startX = e.clientX - zoomStates[id].panX;
+            zoomStates[id].startY = e.clientY - zoomStates[id].panY;
+            container.style.cursor = "grabbing";
+        });
+        window.addEventListener("mousemove", (e) => {
+            if (!zoomStates[id] || !zoomStates[id].isDragging)
+                return;
+            zoomStates[id].panX = e.clientX - zoomStates[id].startX;
+            zoomStates[id].panY = e.clientY - zoomStates[id].startY;
+            applyZoomPan(id);
+        });
+        window.addEventListener("mouseup", () => {
+            if (zoomStates[id]) {
+                zoomStates[id].isDragging = false;
+                container.style.cursor = "grab";
+            }
+        });
+    });
+}
 /* =========================================================
-   DYNAMIC EXAMPLES
+   INPUT INTERFACE & EXAMPLES
 ========================================================= */
-const exampleData = {
-    2: { minterms: "1,2", maxterms: "0,3" },
-    3: { minterms: "1,3,5,7", maxterms: "0,2,4,6" },
-    4: { minterms: "1,3,7,11", maxterms: "0,2,4,8" },
-    5: { minterms: "1,5,9,17", maxterms: "0,2,8,16" },
-    6: { minterms: "1,5,9,17,33", maxterms: "0,2,8,24,40" }
-};
-const dontCareExampleData = {
-    2: { minterms: "1,3", dontCares: "0" },
-    3: { minterms: "1,3,5", dontCares: "0,7" },
-    4: { minterms: "1,3,5,15", dontCares: "0,7,12" },
-    5: { minterms: "1,5,9,15,31", dontCares: "0,8,16,24" },
-    6: { minterms: "1,5,9,15,33,45", dontCares: "0,8,16,32,40" }
-};
 function updateNumericExamples() {
     const minCount = Number(mintermVariables.value);
+    const maxVal = (1 << minCount) - 1;
+    mintermExample.innerHTML = `Valid minterms: <strong>0 to ${maxVal}</strong> (e.g. 1, 3, 5)`;
     const maxCount = Number(maxtermVariables.value);
-    const minExample = exampleData[minCount];
-    const maxExample = exampleData[maxCount];
-    if (minExample) {
-        mintermsInput.placeholder = `Example: ${minExample.minterms}`;
-        mintermExample.innerHTML = `Example: <code>${minExample.minterms}</code>`;
-    }
-    if (maxExample) {
-        maxtermsInput.placeholder = `Example: ${maxExample.maxterms}`;
-        maxtermExample.innerHTML = `Example: <code>${maxExample.maxterms}</code>`;
-    }
+    const maxValMax = (1 << maxCount) - 1;
+    maxtermExample.innerHTML = `Valid maxterms: <strong>0 to ${maxValMax}</strong> (e.g. 0, 2, 4)`;
+    updateDontCareExamples();
 }
 function updateDontCareExamples() {
     const count = Number(dontCareVariables.value);
-    const example = dontCareExampleData[count];
-    if (example) {
-        dontCareMintermsInput.placeholder = `Example: ${example.minterms}`;
-        dontCareMintermExample.innerHTML = `Example: <code>${example.minterms}</code>`;
-        dontCaresInput.placeholder = `Example: ${example.dontCares}`;
-        dontCareExample.innerHTML = `Example: <code>${example.dontCares}</code>`;
-    }
+    const maxVal = (1 << count) - 1;
+    dontCareExample.innerHTML = `Valid terms: <strong>0 to ${maxVal}</strong> (e.g. Minterms: 1,3,7 &nbsp; Don't Cares: 0,5)`;
 }
-/* =========================================================
-   CLEAR RESULTS
-========================================================= */
 function clearResults() {
     results.classList.add("hidden");
-    clearError();
-    [
-        "originalExpression",
-        "generatedTruthTable",
-        "canonicalSOP",
-        "canonicalPOS",
-        "simplifiedExpression",
-        "karnaughMap",
-        "basicCircuit",
-        "nandCircuit",
-        "norCircuit",
-        "verification"
-    ].forEach(id => {
-        const element = document.getElementById(id);
-        if (element)
-            element.innerHTML = "";
-    });
     const dontCareResults = document.getElementById("dontCareResults");
     if (dontCareResults)
         dontCareResults.classList.add("hidden");
+    document.getElementById("originalExpression").textContent = "";
+    document.getElementById("generatedTruthTable").innerHTML = "";
+    document.getElementById("canonicalSOP").textContent = "";
+    document.getElementById("canonicalPOS").textContent = "";
+    document.getElementById("simplifiedExpression").textContent = "";
+    document.getElementById("karnaughMap").innerHTML = "";
+    document.getElementById("basicCircuit").innerHTML = "";
+    document.getElementById("nandCircuit").innerHTML = "";
+    document.getElementById("norCircuit").innerHTML = "";
+    document.getElementById("verification").innerHTML = "";
 }
-/* =========================================================
-   INPUT TYPE LISTENERS
-========================================================= */
-inputType.addEventListener("change", () => {
-    clearResults();
-    updateInputInterface();
-});
 function updateInputInterface() {
-    expressionSection.classList.add("hidden");
-    mintermSection.classList.add("hidden");
-    maxtermSection.classList.add("hidden");
-    dontCareSection.classList.add("hidden");
-    truthTableSection.classList.add("hidden");
-    switch (inputType.value) {
-        case "expression":
-            expressionSection.classList.remove("hidden");
-            break;
-        case "minterms":
-            mintermSection.classList.remove("hidden");
-            updateNumericExamples();
-            break;
-        case "maxterms":
-            maxtermSection.classList.remove("hidden");
-            updateNumericExamples();
-            break;
-        case "dontCare":
-            dontCareSection.classList.remove("hidden");
-            updateDontCareExamples();
-            break;
-        case "truthTable":
-            truthTableSection.classList.remove("hidden");
-            generateTruthTableInput();
-            break;
-    }
+    const type = inputType.value;
+    expressionSection.classList.toggle("hidden", type !== "expression");
+    mintermSection.classList.toggle("hidden", type !== "minterms");
+    maxtermSection.classList.toggle("hidden", type !== "maxterms");
+    dontCareSection.classList.toggle("hidden", type !== "dontCare");
+    truthTableSection.classList.toggle("hidden", type !== "truthTable");
+    clearResults();
 }
-[expressionInput, mintermsInput, maxtermsInput, dontCareMintermsInput, dontCaresInput].forEach(element => {
-    element.addEventListener("input", clearResults);
+inputType.addEventListener("change", () => {
+    updateInputInterface();
+    if (window.StudioFX)
+        window.StudioFX.click(true);
 });
-mintermVariables.addEventListener("change", () => {
-    clearResults();
-    updateNumericExamples();
-});
-maxtermVariables.addEventListener("change", () => {
-    clearResults();
-    updateNumericExamples();
-});
-dontCareVariables.addEventListener("change", () => {
-    clearResults();
-    updateDontCareExamples();
-});
-truthVariables.addEventListener("change", () => {
-    clearResults();
-    generateTruthTableInput();
-});
-document.addEventListener("change", (event) => {
-    const target = event.target;
-    if (target.classList.contains("truth-input")) {
-        clearResults();
-    }
-});
+mintermVariables.addEventListener("change", updateNumericExamples);
+maxtermVariables.addEventListener("change", updateNumericExamples);
+dontCareVariables.addEventListener("change", updateDontCareExamples);
+truthVariables.addEventListener("change", generateTruthTableInput);
 /* =========================================================
-   VARIABLES & TOKENIZER
+   LEXER & PARSER
 ========================================================= */
 function getVariables(expression) {
-    const matches = expression.match(/[A-Z]/gi) || [];
-    return [...new Set(matches.map(value => value.toUpperCase()))].sort();
+    const letters = expression.match(/[A-Za-z]/g) || [];
+    return [...new Set(letters.map(letter => letter.toUpperCase()))].sort();
 }
 function generateVariableNames(count) {
-    const variables = [];
+    const names = [];
     for (let i = 0; i < count; i++) {
-        variables.push(String.fromCharCode(65 + i));
+        names.push(String.fromCharCode(65 + i));
     }
-    return variables;
+    return names;
 }
 function tokenize(expression) {
-    const exp = expression.toUpperCase().replace(/\s+/g, "");
     const tokens = [];
     let i = 0;
-    while (i < exp.length) {
-        const char = exp[i];
-        if (/[A-Z]/.test(char)) {
-            tokens.push({ type: "VARIABLE", value: char });
+    while (i < expression.length) {
+        const char = expression[i];
+        if (/\s/.test(char)) {
+            i++;
+            continue;
+        }
+        if (/[A-Za-z]/.test(char)) {
+            tokens.push({ type: "VARIABLE", value: char.toUpperCase() });
             i++;
             continue;
         }
@@ -189,23 +210,23 @@ function tokenize(expression) {
             i++;
             continue;
         }
-        if (char === "+") {
+        if (char === "+" || char === "|") {
             tokens.push({ type: "OR" });
-            i++;
-            continue;
-        }
-        if (char === "*") {
-            tokens.push({ type: "AND" });
-            i++;
-            continue;
-        }
-        if (char === "!") {
-            tokens.push({ type: "NOT" });
             i++;
             continue;
         }
         if (char === "^") {
             tokens.push({ type: "XOR" });
+            i++;
+            continue;
+        }
+        if (char === "*" || char === "&" || char === "·") {
+            tokens.push({ type: "AND" });
+            i++;
+            continue;
+        }
+        if (char === "~" || char === "!" || char === "¬") {
+            tokens.push({ type: "NOT" });
             i++;
             continue;
         }
@@ -219,252 +240,206 @@ function tokenize(expression) {
             i++;
             continue;
         }
-        throw new Error(`Invalid character: ${char}`);
+        throw new Error(`Unsupported character: '${char}'`);
     }
-    return insertImplicitAND(tokens);
+    return tokens;
 }
 function insertImplicitAND(tokens) {
     const result = [];
     for (let i = 0; i < tokens.length; i++) {
         const current = tokens[i];
-        const previous = result[result.length - 1];
-        if (previous &&
-            (previous.type === "VARIABLE" || previous.type === "RPAREN" || previous.type === "POSTFIX_NOT") &&
-            (current.type === "VARIABLE" || current.type === "LPAREN" || current.type === "NOT")) {
-            result.push({ type: "AND" });
-        }
         result.push(current);
+        if (i + 1 < tokens.length) {
+            const next = tokens[i + 1];
+            const leftCanEnd = current.type === "VARIABLE" ||
+                current.type === "POSTFIX_NOT" ||
+                current.type === "RPAREN";
+            const rightCanStart = next.type === "VARIABLE" ||
+                next.type === "NOT" ||
+                next.type === "LPAREN";
+            if (leftCanEnd && rightCanStart) {
+                result.push({ type: "AND" });
+            }
+        }
     }
     return result;
 }
-/* =========================================================
-   PARSER & AST EVALUATION
-========================================================= */
-class BooleanParser {
+class Parser {
     constructor(tokens) {
+        this.index = 0;
         this.tokens = tokens;
-        this.position = 0;
     }
-    current() { return this.tokens[this.position]; }
-    consume(type) {
-        const current = this.current();
-        if (!current || current.type !== type) {
-            throw new Error(`Expected ${type}`);
-        }
-        return this.tokens[this.position++];
-    }
+    peek() { return this.tokens[this.index]; }
+    get() { return this.tokens[this.index++]; }
     parse() {
         const node = this.parseOR();
-        if (this.current()) {
-            throw new Error("Unexpected token in expression");
+        if (this.index < this.tokens.length) {
+            throw new Error("Unexpected token at end of expression.");
         }
         return node;
     }
     parseOR() {
         let node = this.parseXOR();
-        let current = this.current();
-        while (current && current.type === "OR") {
-            this.consume("OR");
+        while (this.peek()?.type === "OR") {
+            this.get();
             node = { type: "OR", left: node, right: this.parseXOR() };
-            current = this.current();
         }
         return node;
     }
     parseXOR() {
         let node = this.parseAND();
-        let current = this.current();
-        while (current && current.type === "XOR") {
-            this.consume("XOR");
+        while (this.peek()?.type === "XOR") {
+            this.get();
             node = { type: "XOR", left: node, right: this.parseAND() };
-            current = this.current();
         }
         return node;
     }
     parseAND() {
-        let node = this.parseNOT();
-        let current = this.current();
-        while (current && current.type === "AND") {
-            this.consume("AND");
-            node = { type: "AND", left: node, right: this.parseNOT() };
-            current = this.current();
+        let node = this.parseUnary();
+        while (this.peek()?.type === "AND") {
+            this.get();
+            node = { type: "AND", left: node, right: this.parseUnary() };
         }
         return node;
     }
-    parseNOT() {
-        const current = this.current();
-        if (current && current.type === "NOT") {
-            this.consume("NOT");
-            return { type: "NOT", child: this.parseNOT() };
+    parseUnary() {
+        if (this.peek()?.type === "NOT") {
+            this.get();
+            return { type: "NOT", child: this.parseUnary() };
         }
-        return this.parsePrimary();
+        let node = this.parsePrimary();
+        while (this.peek()?.type === "POSTFIX_NOT") {
+            this.get();
+            node = { type: "NOT", child: node };
+        }
+        return node;
     }
     parsePrimary() {
-        const token = this.current();
+        const token = this.get();
         if (!token)
-            throw new Error("Unexpected end of expression");
-        if (token.type === "VARIABLE") {
-            this.position++;
-            let node = { type: "VARIABLE", name: token.value };
-            let current = this.current();
-            while (current && current.type === "POSTFIX_NOT") {
-                this.consume("POSTFIX_NOT");
-                node = { type: "NOT", child: node };
-                current = this.current();
-            }
-            return node;
-        }
+            throw new Error("Unexpected end of expression.");
+        if (token.type === "VARIABLE")
+            return { type: "VARIABLE", name: token.value };
         if (token.type === "LPAREN") {
-            this.consume("LPAREN");
-            let node = this.parseOR();
-            this.consume("RPAREN");
-            let current = this.current();
-            while (current && current.type === "POSTFIX_NOT") {
-                this.consume("POSTFIX_NOT");
-                node = { type: "NOT", child: node };
-                current = this.current();
-            }
+            const node = this.parseOR();
+            const close = this.get();
+            if (!close || close.type !== "RPAREN")
+                throw new Error("Missing closing parenthesis ')'.");
             return node;
         }
-        throw new Error("Expected variable or '('");
+        throw new Error("Invalid expression syntax.");
     }
 }
 function evaluateAST(node, assignment) {
     switch (node.type) {
-        case "VARIABLE": return Boolean(assignment[node.name]);
+        case "VARIABLE": return assignment[node.name] ?? false;
         case "NOT": return !evaluateAST(node.child, assignment);
         case "AND": return evaluateAST(node.left, assignment) && evaluateAST(node.right, assignment);
         case "OR": return evaluateAST(node.left, assignment) || evaluateAST(node.right, assignment);
         case "XOR": return evaluateAST(node.left, assignment) !== evaluateAST(node.right, assignment);
-        case "CONST": return Boolean(node.value);
-        default: throw new Error(`Unknown AST node: ${node.type}`);
+        case "CONST": return node.value;
     }
 }
 function generateCombinations(variableCount) {
-    const total = 2 ** variableCount;
+    const total = 1 << variableCount;
     const combinations = [];
-    for (let number = 0; number < total; number++) {
+    for (let i = 0; i < total; i++) {
         const row = [];
         for (let bit = variableCount - 1; bit >= 0; bit--) {
-            row.push((number >> bit) & 1);
+            row.push((i >> bit) & 1);
         }
         combinations.push(row);
     }
     return combinations;
 }
 function evaluateExpression(expression, variables) {
-    if (expression === "0" || expression === "1") {
-        const value = expression === "1";
-        return {
-            ast: { type: "CONST", value },
-            rows: generateCombinations(variables.length).map(inputs => ({ inputs, output: value ? 1 : 0 }))
-        };
-    }
-    const tokens = tokenize(expression);
-    const parser = new BooleanParser(tokens);
+    const tokens = insertImplicitAND(tokenize(expression));
+    const parser = new Parser(tokens);
     const ast = parser.parse();
     const combinations = generateCombinations(variables.length);
-    const rows = combinations.map(values => {
+    const rows = combinations.map(inputs => {
         const assignment = {};
         variables.forEach((variable, index) => {
-            assignment[variable] = Boolean(values[index]);
+            assignment[variable] = Boolean(inputs[index]);
         });
-        const output = evaluateAST(ast, assignment);
-        return { inputs: values, output: output ? 1 : 0 };
+        return { inputs, output: evaluateAST(ast, assignment) ? 1 : 0 };
     });
     return { ast, rows };
 }
 /* =========================================================
-   CANONICAL FORMS & MINIMIZATION
+   CANONICAL FORMS & MINIMIZATION (Quine-McCluskey)
 ========================================================= */
 function mintermsToExpression(minterms, variableCount, dontCares) {
+    const maxVal = (1 << variableCount) - 1;
+    minterms.forEach(m => {
+        if (isNaN(m) || m < 0 || m > maxVal) {
+            throw new Error(`Minterm ${m} is out of range (0 to ${maxVal}).`);
+        }
+    });
     const variables = generateVariableNames(variableCount);
     if (minterms.length === 0)
         return "0";
-    const total = 2 ** variableCount;
-    minterms.forEach(number => {
-        if (number < 0 || number >= total) {
-            throw new Error(`Minterm ${number} is invalid for ${variableCount} variables.`);
-        }
-    });
-    if (dontCares) {
-        dontCares.forEach(number => {
-            if (number < 0 || number >= total) {
-                throw new Error(`Don't care term ${number} is invalid for ${variableCount} variables.`);
-            }
-        });
-    }
-    const unique = [...new Set(minterms)].sort((a, b) => a - b);
-    if (unique.length === total)
+    if (minterms.length === 1 << variableCount)
         return "1";
-    const terms = unique.map(number => {
-        const binary = number.toString(2).padStart(variableCount, "0");
+    return minterms.map(m => {
         let term = "";
-        variables.forEach((variable, index) => {
-            term += binary[index] === "1" ? variable : variable + "'";
-        });
+        for (let i = 0; i < variableCount; i++) {
+            const bit = (m >> (variableCount - 1 - i)) & 1;
+            term += bit ? variables[i] : `${variables[i]}'`;
+        }
         return term;
-    });
-    let result = terms.join(" + ");
-    if (dontCares && dontCares.size > 0) {
-        const dcSorted = [...dontCares].sort((a, b) => a - b);
-        result += `  (don't cares: {${dcSorted.join(", ")}})`;
-    }
-    return result;
+    }).join(" + ");
 }
 function maxtermsToExpression(maxterms, variableCount, dontCares) {
+    const maxVal = (1 << variableCount) - 1;
+    maxterms.forEach(m => {
+        if (isNaN(m) || m < 0 || m > maxVal) {
+            throw new Error(`Maxterm ${m} is out of range (0 to ${maxVal}).`);
+        }
+    });
     const variables = generateVariableNames(variableCount);
     if (maxterms.length === 0)
         return "1";
-    const total = 2 ** variableCount;
-    maxterms.forEach(number => {
-        if (number < 0 || number >= total) {
-            throw new Error(`Maxterm ${number} is invalid for ${variableCount} variables.`);
-        }
-    });
-    if (dontCares) {
-        dontCares.forEach(number => {
-            if (number < 0 || number >= total) {
-                throw new Error(`Don't care term ${number} is invalid for ${variableCount} variables.`);
-            }
-        });
-    }
-    const unique = [...new Set(maxterms)].sort((a, b) => a - b);
-    if (unique.length === total)
+    if (maxterms.length === 1 << variableCount)
         return "0";
-    const clauses = unique.map(number => {
-        const binary = number.toString(2).padStart(variableCount, "0");
-        const literals = variables.map((variable, index) => binary[index] === "0" ? variable : variable + "'");
-        return "(" + literals.join(" + ") + ")";
-    });
-    let result = clauses.join("");
-    if (dontCares && dontCares.size > 0) {
-        const dcSorted = [...dontCares].sort((a, b) => a - b);
-        result += `  (don't cares: {${dcSorted.join(", ")}})`;
-    }
-    return result;
+    return maxterms.map(m => {
+        const parts = [];
+        for (let i = 0; i < variableCount; i++) {
+            const bit = (m >> (variableCount - 1 - i)) & 1;
+            parts.push(bit ? `${variables[i]}'` : variables[i]);
+        }
+        return `(${parts.join(" + ")})`;
+    }).join("");
 }
 function generateCanonicalSOP(rows, variables, dontCares) {
-    const minterms = [];
-    rows.forEach((row, index) => { if (row.output === 1)
-        minterms.push(index); });
-    return mintermsToExpression(minterms, variables.length, dontCares);
+    const terms = rows
+        .map((row, index) => ({ row, index }))
+        .filter(({ row, index }) => row.output === 1 && (!dontCares || !dontCares.has(index)))
+        .map(({ row }) => {
+        return row.inputs.map((val, idx) => val ? variables[idx] : `${variables[idx]}'`).join("");
+    });
+    return terms.length > 0 ? terms.join(" + ") : "0";
 }
 function generateCanonicalPOS(rows, variables, dontCares) {
-    const maxterms = [];
-    rows.forEach((row, index) => { if (row.output === 0)
-        maxterms.push(index); });
-    return maxtermsToExpression(maxterms, variables.length, dontCares);
+    const clauses = rows
+        .map((row, index) => ({ row, index }))
+        .filter(({ row, index }) => row.output === 0 && (!dontCares || !dontCares.has(index)))
+        .map(({ row }) => {
+        const sum = row.inputs.map((val, idx) => val ? `${variables[idx]}'` : variables[idx]).join(" + ");
+        return `(${sum})`;
+    });
+    return clauses.length > 0 ? clauses.join("") : "1";
 }
 function canCombine(a, b) {
-    let differences = 0;
+    let diff = 0;
     for (let i = 0; i < a.length; i++) {
         if (a[i] !== b[i]) {
-            if (a[i] === "-" || b[i] === "-")
+            diff++;
+            if (diff > 1)
                 return false;
-            differences++;
         }
     }
-    return differences === 1;
+    return diff === 1;
 }
 function combinePatterns(a, b) {
     let result = "";
@@ -474,112 +449,106 @@ function combinePatterns(a, b) {
     return result;
 }
 function patternCovers(pattern, minterm, variableCount) {
-    const binary = minterm.toString(2).padStart(variableCount, "0");
-    for (let i = 0; i < variableCount; i++) {
-        if (pattern[i] !== "-" && pattern[i] !== binary[i])
+    const bin = minterm.toString(2).padStart(variableCount, "0");
+    for (let i = 0; i < pattern.length; i++) {
+        if (pattern[i] !== "-" && pattern[i] !== bin[i])
             return false;
     }
     return true;
 }
 function getPrimeImplicants(minterms, variableCount) {
-    let current = minterms.map(minterm => ({
-        pattern: minterm.toString(2).padStart(variableCount, "0"),
-        covered: [minterm]
-    }));
-    const primes = [];
-    while (current.length > 0) {
-        const next = [];
-        const used = new Set();
-        for (let i = 0; i < current.length; i++) {
-            for (let j = i + 1; j < current.length; j++) {
-                if (canCombine(current[i].pattern, current[j].pattern)) {
-                    const pattern = combinePatterns(current[i].pattern, current[j].pattern);
-                    used.add(i);
-                    used.add(j);
-                    const covered = [...new Set([...current[i].covered, ...current[j].covered])];
-                    if (!next.some(item => item.pattern === pattern)) {
-                        next.push({ pattern, covered });
+    let groups = new Map();
+    minterms.forEach(m => {
+        const bin = m.toString(2).padStart(variableCount, "0");
+        const ones = (bin.match(/1/g) || []).length;
+        if (!groups.has(ones))
+            groups.set(ones, new Set());
+        groups.get(ones).add(bin);
+    });
+    const primes = new Set();
+    while (groups.size > 0) {
+        const nextGroups = new Map();
+        const combined = new Set();
+        const onesKeys = [...groups.keys()].sort((a, b) => a - b);
+        for (let i = 0; i < onesKeys.length - 1; i++) {
+            const k1 = onesKeys[i];
+            const k2 = onesKeys[i + 1];
+            if (k2 !== k1 + 1)
+                continue;
+            const g1 = groups.get(k1);
+            const g2 = groups.get(k2);
+            g1.forEach(p1 => {
+                g2.forEach(p2 => {
+                    if (canCombine(p1, p2)) {
+                        const merged = combinePatterns(p1, p2);
+                        combined.add(p1);
+                        combined.add(p2);
+                        const ones = (merged.replace(/-/g, "").match(/1/g) || []).length;
+                        if (!nextGroups.has(ones))
+                            nextGroups.set(ones, new Set());
+                        nextGroups.get(ones).add(merged);
                     }
-                }
-            }
+                });
+            });
         }
-        current.forEach((implicant, index) => {
-            if (!used.has(index) && !primes.some(item => item.pattern === implicant.pattern)) {
-                primes.push(implicant);
-            }
+        groups.forEach(set => {
+            set.forEach(pattern => {
+                if (!combined.has(pattern))
+                    primes.add(pattern);
+            });
         });
-        current = next;
+        groups = nextGroups;
     }
-    return primes;
+    return [...primes].map(pattern => ({ pattern }));
 }
 function findMinimumCover(minterms, primes, variableCount) {
-    if (minterms.length === 0)
+    if (minterms.length === 0 || primes.length === 0)
         return [];
-    const candidates = new Map();
-    minterms.forEach(minterm => candidates.set(minterm, []));
-    primes.forEach((prime, index) => {
-        minterms.forEach(minterm => {
-            if (patternCovers(prime.pattern, minterm, variableCount)) {
-                candidates.get(minterm).push(index);
+    const chart = primes.map(p => minterms.map(m => patternCovers(p.pattern, m, variableCount)));
+    const essentialPrimes = new Set();
+    const uncoveredMinterms = new Set(minterms.map((_, i) => i));
+    for (let c = 0; c < minterms.length; c++) {
+        const coveringPrimes = [];
+        for (let r = 0; r < primes.length; r++) {
+            if (chart[r][c])
+                coveringPrimes.push(r);
+        }
+        if (coveringPrimes.length === 1) {
+            const r = coveringPrimes[0];
+            essentialPrimes.add(r);
+            for (let col = 0; col < minterms.length; col++) {
+                if (chart[r][col])
+                    uncoveredMinterms.delete(col);
             }
-        });
-    });
-    const selected = new Set();
-    const covered = new Set();
-    let changed = true;
-    while (changed) {
-        changed = false;
-        minterms.forEach(minterm => {
-            const list = candidates.get(minterm);
-            const remaining = list.filter(index => !selected.has(index));
-            if (remaining.length === 1) {
-                const index = remaining[0];
-                if (!selected.has(index)) {
-                    selected.add(index);
-                    changed = true;
-                    minterms.forEach(m => {
-                        if (patternCovers(primes[index].pattern, m, variableCount)) {
-                            covered.add(m);
-                        }
-                    });
-                }
-            }
-        });
+        }
     }
-    if (covered.size === minterms.length) {
-        return [...selected].map(index => primes[index]);
+    if (uncoveredMinterms.size === 0) {
+        return [...essentialPrimes].map(i => primes[i]);
     }
-    const remaining = minterms.filter(m => !covered.has(m));
-    let best = null;
+    const remainingPrimes = primes
+        .map((_, i) => i)
+        .filter(i => !essentialPrimes.has(i));
+    const remainingMinterms = [...uncoveredMinterms];
+    let bestCombination = null;
     function search(uncovered, chosen) {
         if (uncovered.length === 0) {
-            const literalCount = chosen.reduce((sum, index) => sum + primes[index].pattern.split("").filter(bit => bit !== "-").length, 0);
-            const candidate = { terms: chosen.length, literals: literalCount, chosen: [...chosen] };
-            if (!best || candidate.terms < best.terms || (candidate.terms === best.terms && candidate.literals < best.literals)) {
-                best = candidate;
+            if (bestCombination === null || chosen.length < bestCombination.length) {
+                bestCombination = [...chosen];
             }
             return;
         }
-        if (best && chosen.length >= best.terms)
+        if (bestCombination !== null && chosen.length >= bestCombination.length)
             return;
-        let target = uncovered[0];
-        let targetCandidates = candidates.get(target);
-        uncovered.forEach(minterm => {
-            const list = candidates.get(minterm);
-            if (list.length < targetCandidates.length) {
-                target = minterm;
-                targetCandidates = list;
-            }
-        });
-        for (const index of targetCandidates) {
-            if (chosen.includes(index))
-                continue;
-            const newUncovered = uncovered.filter(m => !patternCovers(primes[index].pattern, m, variableCount));
-            search(newUncovered, [...chosen, index]);
+        const targetMinterm = uncovered[0];
+        const covering = remainingPrimes.filter(p => chart[p][targetMinterm] && !chosen.includes(p));
+        for (const p of covering) {
+            const newUncovered = uncovered.filter(m => !chart[p][m]);
+            search(newUncovered, [...chosen, p]);
         }
     }
-    search(remaining, [...selected]);
-    return best ? best.chosen.map(index => primes[index]) : [...selected].map(index => primes[index]);
+    search(remainingMinterms, []);
+    const allChosen = new Set([...essentialPrimes, ...(bestCombination || [])]);
+    return [...allChosen].map(i => primes[i]);
 }
 function patternToSOPTerm(pattern, variables) {
     let term = "";
@@ -587,481 +556,415 @@ function patternToSOPTerm(pattern, variables) {
         if (pattern[i] === "1")
             term += variables[i];
         else if (pattern[i] === "0")
-            term += variables[i] + "'";
+            term += `${variables[i]}'`;
     }
     return term || "1";
 }
 function sopFromImplicants(implicants, variables) {
     if (implicants.length === 0)
         return "0";
-    return implicants.map(item => patternToSOPTerm(item.pattern, variables)).join(" + ");
+    return implicants.map(imp => patternToSOPTerm(imp.pattern, variables)).join(" + ");
 }
 function patternToPOSClause(pattern, variables) {
-    const literals = [];
+    const parts = [];
     for (let i = 0; i < pattern.length; i++) {
         if (pattern[i] === "0")
-            literals.push(variables[i]);
+            parts.push(variables[i]);
         else if (pattern[i] === "1")
-            literals.push(variables[i] + "'");
+            parts.push(`${variables[i]}'`);
     }
-    return "(" + literals.join(" + ") + ")";
+    if (parts.length === 0)
+        return "0";
+    return parts.length === 1 ? parts[0] : `(${parts.join(" + ")})`;
 }
 function posFromImplicants(implicants, variables) {
     if (implicants.length === 0)
         return "1";
-    return implicants.map(item => patternToPOSClause(item.pattern, variables)).join("");
+    return implicants.map(imp => patternToPOSClause(imp.pattern, variables)).join("");
 }
 function minimizeSOP(minterms, variables, dontCares) {
-    const variableCount = variables.length;
-    const total = 2 ** variableCount;
     if (minterms.length === 0)
         return { expression: "0", implicants: [] };
-    if (minterms.length === total)
-        return { expression: "1", implicants: [{ pattern: "-".repeat(variableCount) }] };
-    // Combine minterms with don't cares for prime implicant calculation
-    const allTerms = dontCares ? [...new Set([...minterms, ...dontCares])] : [...minterms];
-    allTerms.sort((a, b) => a - b);
-    const primes = getPrimeImplicants(allTerms, variableCount);
-    // Only cover the required minterms, don't cares are optional
-    const selected = findMinimumCover(minterms, primes, variableCount);
-    return { expression: sopFromImplicants(selected, variables), implicants: selected };
+    const allTerms = dontCares ? [...minterms, ...dontCares] : minterms;
+    if (minterms.length + (dontCares?.size || 0) === (1 << variables.length)) {
+        return { expression: "1", implicants: [{ pattern: "-".repeat(variables.length) }] };
+    }
+    const primes = getPrimeImplicants(allTerms, variables.length);
+    const cover = findMinimumCover(minterms, primes, variables.length);
+    return { expression: sopFromImplicants(cover, variables), implicants: cover };
 }
 function minimizePOS(zeros, variables, dontCares) {
-    const variableCount = variables.length;
-    const total = 2 ** variableCount;
     if (zeros.length === 0)
         return { expression: "1", implicants: [] };
-    if (zeros.length === total)
-        return { expression: "0", implicants: [{ pattern: "-".repeat(variableCount) }] };
-    // Combine zeros with don't cares for prime implicant calculation
-    const allTerms = dontCares ? [...new Set([...zeros, ...dontCares])] : [...zeros];
-    allTerms.sort((a, b) => a - b);
-    const primes = getPrimeImplicants(allTerms, variableCount);
-    // Only cover the required zeros, don't cares are optional
-    const selected = findMinimumCover(zeros, primes, variableCount);
-    return { expression: posFromImplicants(selected, variables), implicants: selected };
+    const allTerms = dontCares ? [...zeros, ...dontCares] : zeros;
+    if (zeros.length + (dontCares?.size || 0) === (1 << variables.length)) {
+        return { expression: "0", implicants: [{ pattern: "-".repeat(variables.length) }] };
+    }
+    const primes = getPrimeImplicants(allTerms, variables.length);
+    const cover = findMinimumCover(zeros, primes, variables.length);
+    return { expression: posFromImplicants(cover, variables), implicants: cover };
 }
 /* =========================================================
    CIRCUIT GRAPH GENERATION
 ========================================================= */
-let circuitCounter = 0;
 function createGraph() {
-    return { nodes: [], output: null };
+    return { nodes: [], output: "", inputs: [] };
 }
 function addNode(graph, type, inputs = [], label = "") {
-    const node = { id: `node_${circuitCounter++}`, type, inputs, label };
-    graph.nodes.push(node);
-    return node.id;
+    const id = `node_${circuitCounter++}`;
+    graph.nodes.push({ id, type, inputs, label });
+    return id;
 }
 function addInput(graph, variable) {
-    if (!graph.inputMap)
-        graph.inputMap = new Map();
-    const existingId = graph.inputMap.get(variable);
-    if (existingId)
-        return existingId;
+    const existing = graph.nodes.find(n => n.type === "INPUT" && n.label === variable);
+    if (existing)
+        return existing.id;
     const id = addNode(graph, "INPUT", [], variable);
-    graph.inputMap.set(variable, id);
+    graph.inputs.push(id);
     return id;
 }
 function buildBasicSOPCircuit(implicants, variables) {
     const graph = createGraph();
+    variables.forEach(v => addInput(graph, v));
     if (implicants.length === 0) {
         graph.output = addNode(graph, "CONST", [], "0");
         return graph;
     }
-    if (implicants.length === 1 && implicants[0].pattern.split("").every(bit => bit === "-")) {
+    if (implicants.length === 1 && implicants[0].pattern === "-".repeat(variables.length)) {
         graph.output = addNode(graph, "CONST", [], "1");
         return graph;
     }
-    const terms = [];
-    implicants.forEach(implicant => {
-        const literals = [];
-        for (let i = 0; i < implicant.pattern.length; i++) {
-            const bit = implicant.pattern[i];
-            if (bit === "-")
-                continue;
-            const input = addInput(graph, variables[i]);
-            if (bit === "0") {
-                literals.push(addNode(graph, "NOT", [input]));
-            }
-            else {
-                literals.push(input);
-            }
+    const notMap = new Map();
+    const getNot = (varName) => {
+        if (!notMap.has(varName)) {
+            const inId = addInput(graph, varName);
+            const notId = addNode(graph, "NOT", [inId], `~${varName}`);
+            notMap.set(varName, notId);
         }
-        if (literals.length === 1) {
-            terms.push(literals[0]);
+        return notMap.get(varName);
+    };
+    const termNodeIds = [];
+    implicants.forEach(imp => {
+        const literalIds = [];
+        for (let i = 0; i < imp.pattern.length; i++) {
+            const bit = imp.pattern[i];
+            if (bit === "1")
+                literalIds.push(addInput(graph, variables[i]));
+            else if (bit === "0")
+                literalIds.push(getNot(variables[i]));
         }
-        else {
-            terms.push(addNode(graph, "AND", literals));
+        if (literalIds.length === 1) {
+            termNodeIds.push(literalIds[0]);
+        }
+        else if (literalIds.length > 1) {
+            termNodeIds.push(addNode(graph, "AND", literalIds));
         }
     });
-    if (terms.length === 1) {
-        graph.output = terms[0];
-    }
-    else {
-        graph.output = addNode(graph, "OR", terms);
-    }
+    if (termNodeIds.length === 1)
+        graph.output = termNodeIds[0];
+    else
+        graph.output = addNode(graph, "OR", termNodeIds);
     return graph;
 }
 function buildNANDCircuit(implicants, variables) {
     const graph = createGraph();
+    variables.forEach(v => addInput(graph, v));
     if (implicants.length === 0) {
         graph.output = addNode(graph, "CONST", [], "0");
         return graph;
     }
-    if (implicants.length === 1 && implicants[0].pattern.split("").every(bit => bit === "-")) {
+    if (implicants.length === 1 && implicants[0].pattern === "-".repeat(variables.length)) {
         graph.output = addNode(graph, "CONST", [], "1");
         return graph;
     }
-    if (implicants.length === 1) {
-        const pattern = implicants[0].pattern;
-        const active = [];
-        for (let i = 0; i < pattern.length; i++) {
-            if (pattern[i] !== "-") {
-                active.push({ variable: variables[i], complemented: pattern[i] === "0" });
-            }
+    const notMap = new Map();
+    const getNandNot = (varName) => {
+        if (!notMap.has(varName)) {
+            const inId = addInput(graph, varName);
+            const notId = addNode(graph, "NAND", [inId, inId], `~${varName}`);
+            notMap.set(varName, notId);
         }
-        if (active.length === 1) {
-            const input = addInput(graph, active[0].variable);
-            graph.output = active[0].complemented ? addNode(graph, "NAND", [input, input]) : input;
-            return graph;
+        return notMap.get(varName);
+    };
+    const layer1Ids = [];
+    implicants.forEach(imp => {
+        const literals = [];
+        for (let i = 0; i < imp.pattern.length; i++) {
+            const bit = imp.pattern[i];
+            if (bit === "1")
+                literals.push(addInput(graph, variables[i]));
+            else if (bit === "0")
+                literals.push(getNandNot(variables[i]));
         }
-    }
-    const productComplements = [];
-    implicants.forEach(implicant => {
-        const literalNodes = [];
-        for (let i = 0; i < implicant.pattern.length; i++) {
-            const bit = implicant.pattern[i];
-            if (bit === "-")
-                continue;
-            const input = addInput(graph, variables[i]);
-            literalNodes.push(bit === "0" ? addNode(graph, "NAND", [input, input]) : input);
-        }
-        if (literalNodes.length === 1) {
-            productComplements.push(addNode(graph, "NAND", [literalNodes[0], literalNodes[0]]));
+        if (literals.length === 1) {
+            const nandInv = addNode(graph, "NAND", [literals[0], literals[0]]);
+            layer1Ids.push(nandInv);
         }
         else {
-            productComplements.push(addNode(graph, "NAND", literalNodes));
+            layer1Ids.push(addNode(graph, "NAND", literals));
         }
     });
-    if (productComplements.length === 1) {
-        graph.output = addNode(graph, "NAND", [productComplements[0], productComplements[0]]);
+    if (layer1Ids.length === 1) {
+        graph.output = addNode(graph, "NAND", [layer1Ids[0], layer1Ids[0]]);
     }
     else {
-        graph.output = addNode(graph, "NAND", productComplements);
+        graph.output = addNode(graph, "NAND", layer1Ids);
     }
     return graph;
 }
 function buildNORCircuit(implicants, variables) {
     const graph = createGraph();
+    variables.forEach(v => addInput(graph, v));
     if (implicants.length === 0) {
         graph.output = addNode(graph, "CONST", [], "1");
         return graph;
     }
-    if (implicants.length === 1 && implicants[0].pattern.split("").every(bit => bit === "-")) {
+    if (implicants.length === 1 && implicants[0].pattern === "-".repeat(variables.length)) {
         graph.output = addNode(graph, "CONST", [], "0");
         return graph;
     }
-    if (implicants.length === 1) {
-        const pattern = implicants[0].pattern;
-        const active = [];
-        for (let i = 0; i < pattern.length; i++) {
-            if (pattern[i] !== "-") {
-                active.push({ variable: variables[i], complemented: pattern[i] === "1" });
-            }
+    const notMap = new Map();
+    const getNorNot = (varName) => {
+        if (!notMap.has(varName)) {
+            const inId = addInput(graph, varName);
+            const notId = addNode(graph, "NOR", [inId, inId], `~${varName}`);
+            notMap.set(varName, notId);
         }
-        if (active.length === 1) {
-            const input = addInput(graph, active[0].variable);
-            graph.output = active[0].complemented ? addNode(graph, "NOR", [input, input]) : input;
-            return graph;
+        return notMap.get(varName);
+    };
+    const layer1Ids = [];
+    implicants.forEach(imp => {
+        const literals = [];
+        for (let i = 0; i < imp.pattern.length; i++) {
+            const bit = imp.pattern[i];
+            if (bit === "0")
+                literals.push(addInput(graph, variables[i]));
+            else if (bit === "1")
+                literals.push(getNorNot(variables[i]));
         }
-    }
-    const clauseComplements = [];
-    implicants.forEach(implicant => {
-        const literalNodes = [];
-        for (let i = 0; i < implicant.pattern.length; i++) {
-            const bit = implicant.pattern[i];
-            if (bit === "-")
-                continue;
-            const input = addInput(graph, variables[i]);
-            literalNodes.push(bit === "1" ? addNode(graph, "NOR", [input, input]) : input);
-        }
-        if (literalNodes.length === 1) {
-            clauseComplements.push(addNode(graph, "NOR", [literalNodes[0], literalNodes[0]]));
+        if (literals.length === 1) {
+            const norInv = addNode(graph, "NOR", [literals[0], literals[0]]);
+            layer1Ids.push(norInv);
         }
         else {
-            clauseComplements.push(addNode(graph, "NOR", literalNodes));
+            layer1Ids.push(addNode(graph, "NOR", literals));
         }
     });
-    if (clauseComplements.length === 1) {
-        graph.output = addNode(graph, "NOR", [clauseComplements[0], clauseComplements[0]]);
+    if (layer1Ids.length === 1) {
+        graph.output = addNode(graph, "NOR", [layer1Ids[0], layer1Ids[0]]);
     }
     else {
-        graph.output = addNode(graph, "NOR", clauseComplements);
+        graph.output = addNode(graph, "NOR", layer1Ids);
     }
     return graph;
 }
+/* =========================================================
+   EVALUATE CIRCUIT GRAPH
+========================================================= */
 function evaluateCircuit(graph, assignment) {
-    const nodeMap = new Map();
-    graph.nodes.forEach(node => nodeMap.set(node.id, node));
-    const cache = new Map();
+    const memo = new Map();
     function evaluateNode(id) {
-        if (cache.has(id))
-            return cache.get(id);
-        const node = nodeMap.get(id);
+        if (memo.has(id))
+            return memo.get(id);
+        const node = graph.nodes.find(n => n.id === id);
         if (!node)
-            throw new Error("Circuit node not found.");
-        let value;
+            return false;
+        let result = false;
         switch (node.type) {
             case "INPUT":
-                value = Boolean(assignment[node.label]);
+                result = assignment[node.label] ?? false;
                 break;
             case "CONST":
-                value = node.label === "1";
+                result = node.label === "1";
                 break;
             case "NOT":
-                value = !evaluateNode(node.inputs[0]);
+                result = !evaluateNode(node.inputs[0]);
                 break;
             case "AND":
-                value = node.inputs.every(input => evaluateNode(input));
+                result = node.inputs.every(inId => evaluateNode(inId));
                 break;
             case "OR":
-                value = node.inputs.some(input => evaluateNode(input));
+                result = node.inputs.some(inId => evaluateNode(inId));
                 break;
             case "NAND":
-                value = !node.inputs.every(input => evaluateNode(input));
+                result = !node.inputs.every(inId => evaluateNode(inId));
                 break;
             case "NOR":
-                value = !node.inputs.some(input => evaluateNode(input));
+                result = !node.inputs.some(inId => evaluateNode(inId));
                 break;
-            default: throw new Error(`Unknown gate: ${node.type}`);
         }
-        cache.set(id, value);
-        return value;
+        memo.set(id, result);
+        return result;
     }
     return evaluateNode(graph.output);
 }
+function evaluateAllNodeValues(graph, assignment) {
+    const nodeValues = new Map();
+    function evalNode(id) {
+        if (nodeValues.has(id))
+            return nodeValues.get(id);
+        const node = graph.nodes.find(n => n.id === id);
+        if (!node)
+            return false;
+        let val = false;
+        switch (node.type) {
+            case "INPUT":
+                val = assignment[node.label] ?? false;
+                break;
+            case "CONST":
+                val = node.label === "1";
+                break;
+            case "NOT":
+                val = !evalNode(node.inputs[0]);
+                break;
+            case "AND":
+                val = node.inputs.every(inp => evalNode(inp));
+                break;
+            case "OR":
+                val = node.inputs.some(inp => evalNode(inp));
+                break;
+            case "NAND":
+                val = !node.inputs.every(inp => evalNode(inp));
+                break;
+            case "NOR":
+                val = !node.inputs.some(inp => evalNode(inp));
+                break;
+        }
+        nodeValues.set(id, val);
+        return val;
+    }
+    graph.nodes.forEach(n => evalNode(n.id));
+    return nodeValues;
+}
 /* =========================================================
-   SCHEMATIC GATE GEOMETRY & PORT MAPPER
-   Accurate geometry so wires always meet gate ports cleanly.
+   GATE GEOMETRY & SCHEMATIC LAYOUT
 ========================================================= */
 function getGateInfo(node) {
-    const h = 52;
-    // Dimensions chosen so outX/inX match the actual SVG path endpoints.
-    if (node.type === "INPUT" || node.type === "CONST") {
-        const w = 90;
-        return {
-            width: w,
-            height: h,
-            outX: (x) => x + w,
-            outY: (x, y) => y + h / 2,
-            inX: (x) => x,
-            inY: (x, y) => y + h / 2
-        };
+    switch (node.type) {
+        case "INPUT":
+        case "CONST":
+            return {
+                width: 90, height: 52,
+                inX: (x) => x, inY: (_, y) => y + 26,
+                outX: (x) => x + 90, outY: (_, y) => y + 26
+            };
+        case "NOT":
+            return {
+                width: 74, height: 52,
+                inX: (x) => x, inY: (_, y) => y + 26,
+                outX: (x) => x + 74, outY: (_, y) => y + 26
+            };
+        case "AND":
+            return {
+                width: 76, height: 52,
+                inX: (x) => x,
+                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
+                outX: (x) => x + 76, outY: (_, y) => y + 26
+            };
+        case "NAND":
+            return {
+                width: 93, height: 52,
+                inX: (x) => x,
+                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
+                outX: (x) => x + 93, outY: (_, y) => y + 26
+            };
+        case "OR":
+            return {
+                width: 86, height: 52,
+                inX: (x, y, i, count) => {
+                    const inputY = getMultiInputY(y, 52, i, count);
+                    const dy = Math.abs(inputY - (y + 26));
+                    return x + Math.max(0, 18 * (1 - dy / 26));
+                },
+                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
+                outX: (x) => x + 86, outY: (_, y) => y + 26
+            };
+        case "NOR":
+            return {
+                width: 100, height: 52,
+                inX: (x, y, i, count) => {
+                    const inputY = getMultiInputY(y, 52, i, count);
+                    const dy = Math.abs(inputY - (y + 26));
+                    return x + Math.max(0, 18 * (1 - dy / 26));
+                },
+                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
+                outX: (x) => x + 100, outY: (_, y) => y + 26
+            };
     }
-    if (node.type === "NOT") {
-        // Triangle tip at x+60, bubble centre at x+67, bubble right edge at x+74
-        const w = 74;
-        return {
-            width: w,
-            height: h,
-            outX: (x) => x + w,
-            outY: (x, y) => y + h / 2,
-            inX: (x) => x,
-            inY: (x, y) => y + h / 2
-        };
-    }
-    if (node.type === "AND") {
-        // Body: rect left + semicircle of radius 26 → right edge at x+76
-        const w = 76;
-        return {
-            width: w,
-            height: h,
-            outX: (x) => x + w,
-            outY: (x, y) => y + h / 2,
-            inX: (x) => x,
-            inY: (x, y, i, count) => getMultiInputY(y, h, i, count)
-        };
-    }
-    if (node.type === "NAND") {
-        // AND body to x+76 + bubble centre 76+10=86, right edge 86+7=93
-        const w = 93;
-        return {
-            width: w,
-            height: h,
-            outX: (x) => x + w,
-            outY: (x, y) => y + h / 2,
-            inX: (x) => x,
-            inY: (x, y, i, count) => getMultiInputY(y, h, i, count)
-        };
-    }
-    if (node.type === "OR") {
-        // Path tip at x+86
-        const w = 86;
-        return {
-            width: w,
-            height: h,
-            outX: (x) => x + w,
-            outY: (x, y) => y + h / 2,
-            inX: (x, y, i, count) => {
-                const iy = getMultiInputY(y, h, i, count);
-                const dy = (iy - (y + h / 2)) / (h / 2);
-                // Match the curved left edge of the OR symbol
-                const indent = 14 * (1 - dy * dy);
-                return x + indent;
-            },
-            inY: (x, y, i, count) => getMultiInputY(y, h, i, count)
-        };
-    }
-    if (node.type === "NOR") {
-        // OR body tip at x+86 + bubble → right edge at x+100
-        const w = 100;
-        return {
-            width: w,
-            height: h,
-            outX: (x) => x + w,
-            outY: (x, y) => y + h / 2,
-            inX: (x, y, i, count) => {
-                const iy = getMultiInputY(y, h, i, count);
-                const dy = (iy - (y + h / 2)) / (h / 2);
-                const indent = 14 * (1 - dy * dy);
-                return x + indent;
-            },
-            inY: (x, y, i, count) => getMultiInputY(y, h, i, count)
-        };
-    }
-    return {
-        width: 90,
-        height: h,
-        outX: (x) => x + 90,
-        outY: (x, y) => y + h / 2,
-        inX: (x) => x,
-        inY: (x, y) => y + h / 2
-    };
 }
 function getMultiInputY(y, h, i, count) {
     if (count <= 1)
         return y + h / 2;
-    // Keep ports inside the gate body with comfortable spacing
-    const usable = Math.min(28, h - 16);
-    const spacing = count === 1 ? 0 : usable / (count - 1);
-    const startY = y + h / 2 - ((count - 1) / 2) * spacing;
-    return startY + i * spacing;
+    const margin = 10;
+    const available = h - 2 * margin;
+    const step = available / (count - 1);
+    return y + margin + i * step;
 }
 function calculateLevels(graph) {
     const levels = new Map();
     function getLevel(id) {
         if (levels.has(id))
             return levels.get(id);
-        const node = graph.nodes.find(item => item.id === id);
-        if (!node || !node.inputs.length) {
+        const node = graph.nodes.find(n => n.id === id);
+        if (!node)
+            return 0;
+        if (node.type === "INPUT" || node.type === "CONST") {
             levels.set(id, 0);
             return 0;
         }
-        const level = Math.max(...node.inputs.map(getLevel)) + 1;
-        levels.set(id, level);
-        return level;
+        let maxIn = -1;
+        node.inputs.forEach(inId => {
+            maxIn = Math.max(maxIn, getLevel(inId));
+        });
+        const lvl = maxIn + 1;
+        levels.set(id, lvl);
+        return lvl;
     }
-    graph.nodes.forEach(node => getLevel(node.id));
+    graph.nodes.forEach(n => getLevel(n.id));
     return levels;
 }
-/* =========================================================
-   CIRCUIT LAYOUT ENGINE
-   - Inputs stacked on the left
-   - Gates placed by topological level
-   - Vertical positions pulled toward the average of their inputs
-   - Extra vertical spacing when many gates share a level
-========================================================= */
 function calculateCircuitLayout(graph) {
     const levels = calculateLevels(graph);
-    const maxLevel = Math.max(0, ...Array.from(levels.values()));
-    const levelGroups = [];
-    for (let l = 0; l <= maxLevel; l++)
-        levelGroups[l] = [];
-    graph.nodes.forEach(node => {
-        const l = levels.get(node.id);
-        levelGroups[l].push(node);
+    const nodesByLevel = new Map();
+    levels.forEach((lvl, id) => {
+        if (!nodesByLevel.has(lvl))
+            nodesByLevel.set(lvl, []);
+        const node = graph.nodes.find(n => n.id === id);
+        if (node)
+            nodesByLevel.get(lvl).push(node);
     });
-    // Sort inputs alphabetically for a stable, readable order
-    if (levelGroups[0]) {
-        levelGroups[0].sort((a, b) => {
-            if (a.type === "INPUT" && b.type === "INPUT") {
-                return String(a.label).localeCompare(String(b.label));
-            }
-            return 0;
-        });
-    }
-    const LEVEL_GAP = 200;
-    const ROW_GAP = 100;
-    const PADDING_X = 50;
-    const PADDING_Y = 50;
+    const levelGap = 200;
+    const paddingX = 40;
+    const paddingY = 40;
+    const gateHeight = 52;
+    const nodeGapY = 32;
     const positions = new Map();
-    // Level 0 – primary inputs / constants
-    const level0 = levelGroups[0] || [];
-    level0.forEach((node, idx) => {
-        positions.set(node.id, {
-            x: PADDING_X,
-            y: PADDING_Y + idx * ROW_GAP
+    let maxTotalHeight = 0;
+    const sortedLevels = [...nodesByLevel.keys()].sort((a, b) => a - b);
+    sortedLevels.forEach(lvl => {
+        const list = nodesByLevel.get(lvl);
+        const totalHeight = list.length * gateHeight + (list.length - 1) * nodeGapY;
+        maxTotalHeight = Math.max(maxTotalHeight, totalHeight);
+    });
+    const circuitHeight = Math.max(260, maxTotalHeight + 2 * paddingY);
+    sortedLevels.forEach(lvl => {
+        const list = nodesByLevel.get(lvl);
+        const totalH = list.length * gateHeight + (list.length - 1) * nodeGapY;
+        const startY = (circuitHeight - totalH) / 2;
+        const x = paddingX + lvl * levelGap;
+        list.forEach((node, idx) => {
+            const y = startY + idx * (gateHeight + nodeGapY);
+            positions.set(node.id, { x, y, level: lvl });
         });
     });
-    // Remaining levels
-    for (let l = 1; l <= maxLevel; l++) {
-        const group = levelGroups[l] || [];
-        if (group.length === 0)
-            continue;
-        const items = group.map(node => {
-            let sumY = 0;
-            let count = 0;
-            node.inputs.forEach(inpId => {
-                const p = positions.get(inpId);
-                if (p) {
-                    // Use the vertical centre of the source gate
-                    const srcNode = graph.nodes.find(n => n.id === inpId);
-                    const srcInfo = getGateInfo(srcNode);
-                    sumY += p.y + srcInfo.height / 2;
-                    count++;
-                }
-            });
-            const idealCenter = count > 0 ? sumY / count : PADDING_Y + 26;
-            return { node, idealCenter };
-        });
-        items.sort((a, b) => a.idealCenter - b.idealCenter);
-        // Pack gates with a minimum vertical gap, centred around the ideal average
-        const n = items.length;
-        const totalSpan = (n - 1) * ROW_GAP;
-        const avgIdeal = items.reduce((s, it) => s + it.idealCenter, 0) / n;
-        let startCenter = avgIdeal - totalSpan / 2;
-        // Keep everything on the canvas
-        if (startCenter - 26 < PADDING_Y) {
-            startCenter = PADDING_Y + 26;
-        }
-        items.forEach((item, idx) => {
-            const centerY = startCenter + idx * ROW_GAP;
-            positions.set(item.node.id, {
-                x: PADDING_X + l * LEVEL_GAP,
-                y: centerY - 26 // top of 52-px-tall gate
-            });
-        });
-    }
-    let maxX = 0;
-    let maxY = 0;
-    graph.nodes.forEach(node => {
-        const pos = positions.get(node.id);
-        if (!pos)
-            return;
-        const info = getGateInfo(node);
-        if (pos.x + info.width > maxX)
-            maxX = pos.x + info.width;
-        if (pos.y + info.height > maxY)
-            maxY = pos.y + info.height;
-    });
-    const width = Math.max(780, maxX + 140);
-    const height = Math.max(320, maxY + PADDING_Y + 20);
-    return { positions, levels, width, height, levelGap: LEVEL_GAP, paddingX: PADDING_X };
+    const maxLevel = Math.max(0, ...sortedLevels);
+    const lastLevelNodes = nodesByLevel.get(maxLevel) || [];
+    const maxNodeWidth = lastLevelNodes.reduce((m, n) => Math.max(m, getGateInfo(n).width), 90);
+    const circuitWidth = paddingX + maxLevel * levelGap + maxNodeWidth + 120;
+    return { positions, levels, width: circuitWidth, height: circuitHeight, levelGap, paddingX, paddingY };
 }
 /* =========================================================
-   SVG SCHEMATIC GATE RENDERER
-   Paths match the widths returned by getGateInfo.
+   SVG GATE RENDERING & WIRE ROUTING
 ========================================================= */
 function renderGateSVG(node, pos) {
     const x = pos.x;
@@ -1070,67 +973,85 @@ function renderGateSVG(node, pos) {
     let svg = "";
     if (node.type === "INPUT" || node.type === "CONST") {
         svg += `
-            <rect x="${x}" y="${y}" width="90" height="52" rx="8" class="circuit-node" />
-            <text x="${x + 45}" y="${centerY + 6}" text-anchor="middle" class="input-label">${node.label}</text>
+            <g class="circuit-gate-group pin-interactive" data-node-id="${node.id}" data-var="${node.label}">
+                <rect x="${x}" y="${y}" width="90" height="52" rx="10" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2" />
+                <text x="${x + 45}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="15" fill="var(--text-primary)">${node.label}</text>
+            </g>
         `;
         return svg;
     }
     if (node.type === "NOT") {
-        // Triangle to x+60, bubble centre x+67, right edge x+74
         svg += `
-            <polygon points="${x},${y} ${x + 60},${centerY} ${x},${y + 52}" class="circuit-node" />
-            <circle cx="${x + 67}" cy="${centerY}" r="7" class="circuit-node" />
-            <text x="${x + 20}" y="${centerY + 5}" class="gate-label">NOT</text>
+            <g class="circuit-gate-group" data-node-id="${node.id}">
+                <polygon points="${x},${y} ${x + 60},${centerY} ${x},${y + 52}" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <circle cx="${x + 67}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <text x="${x + 20}" y="${centerY + 5}" font-weight="800" font-size="12" fill="var(--text-primary)">NOT</text>
+            </g>
         `;
         return svg;
     }
     if (node.type === "AND") {
-        // Left vertical + semicircle radius 26 → right edge at x+76
         svg += `
-            <path d="M ${x} ${y} h 50 a 26 26 0 0 1 0 52 h -50 z" class="circuit-node" />
-            <text x="${x + 34}" y="${centerY + 5}" text-anchor="middle" class="gate-label">AND</text>
+            <g class="circuit-gate-group" data-node-id="${node.id}">
+                <path d="M ${x} ${y} h 50 a 26 26 0 0 1 0 52 h -50 z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <text x="${x + 34}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)">AND</text>
+            </g>
         `;
     }
     else if (node.type === "NAND") {
-        // Same body, bubble centre at x+76+10 = x+86, right edge x+93
         svg += `
-            <path d="M ${x} ${y} h 50 a 26 26 0 0 1 0 52 h -50 z" class="circuit-node" />
-            <circle cx="${x + 86}" cy="${centerY}" r="7" class="circuit-node" />
-            <text x="${x + 34}" y="${centerY + 5}" text-anchor="middle" class="gate-label">NAND</text>
+            <g class="circuit-gate-group" data-node-id="${node.id}">
+                <path d="M ${x} ${y} h 50 a 26 26 0 0 1 0 52 h -50 z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <circle cx="${x + 86}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <text x="${x + 34}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="12" fill="var(--text-primary)">NAND</text>
+            </g>
         `;
     }
     else if (node.type === "OR") {
-        // Classic curved OR, tip at x+86
         svg += `
-            <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" class="circuit-node" />
-            <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" class="gate-label">OR</text>
+            <g class="circuit-gate-group" data-node-id="${node.id}">
+                <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)">OR</text>
+            </g>
         `;
     }
     else if (node.type === "NOR") {
-        // OR body + bubble, right edge at x+100
         svg += `
-            <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" class="circuit-node" />
-            <circle cx="${x + 93}" cy="${centerY}" r="7" class="circuit-node" />
-            <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" class="gate-label">NOR</text>
+            <g class="circuit-gate-group" data-node-id="${node.id}">
+                <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <circle cx="${x + 93}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+                <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="12" fill="var(--text-primary)">NOR</text>
+            </g>
         `;
     }
     return svg;
 }
-/* =========================================================
-   ORTHOGONAL WIRE ROUTING ENGINE
-   - Every connection is routed with pure H/V segments
-   - Distinct vertical channels per source inside each level-gap
-   - Fan-out uses a shared trunk + junction dots
-   - Self-loops (NAND/NOR used as NOT) are drawn cleanly
-========================================================= */
+function formatHopPathH(x1, x2, y, crossXs) {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const isLtoR = x1 <= x2;
+    const valid = crossXs.filter(cx => cx > minX + 8 && cx < maxX - 8).sort((a, b) => isLtoR ? a - b : b - a);
+    if (valid.length === 0) {
+        return `M ${x1} ${y} H ${x2}`;
+    }
+    let d = `M ${x1} ${y}`;
+    valid.forEach(cx => {
+        if (isLtoR) {
+            d += ` H ${cx - 7} A 7 7 0 0 1 ${cx + 7} ${y}`;
+        }
+        else {
+            d += ` H ${cx + 7} A 7 7 0 0 1 ${cx - 7} ${y}`;
+        }
+    });
+    d += ` H ${x2}`;
+    return d;
+}
 function renderEdgesSVG(graph, layout) {
     let svg = "";
-    const { positions, levels, levelGap, paddingX } = layout;
-    // Collect every directed edge with exact port coordinates
+    const { positions, levels } = layout;
     const edges = [];
     graph.nodes.forEach(targetNode => {
-        // Deduplicate identical source ports for self-loops (e.g. NAND(A,A))
-        const seen = new Map(); // sourceId -> list of input indices that share it
+        const seen = new Map();
         targetNode.inputs.forEach((sourceId, inputIndex) => {
             if (!seen.has(sourceId))
                 seen.set(sourceId, []);
@@ -1146,8 +1067,6 @@ function renderEdgesSVG(graph, layout) {
             const targetInfo = getGateInfo(targetNode);
             const x1 = sourceInfo.outX(sourcePos.x);
             const y1 = sourceInfo.outY(sourcePos.x, sourcePos.y);
-            // For multi-pin fan-in from the *same* source we still draw one wire
-            // to the average of the target ports (visually cleaner for NOT-as-NAND)
             let sumY2 = 0;
             let sumX2 = 0;
             indices.forEach(i => {
@@ -1165,8 +1084,6 @@ function renderEdgesSVG(graph, layout) {
             });
         });
     });
-    // Group edges that cross the same horizontal span between two levels
-    // (including multi-level jumps – they share the same source→target level key)
     const gapGroups = new Map();
     edges.forEach(edge => {
         const key = `${edge.sourceLevel}->${edge.targetLevel}`;
@@ -1175,7 +1092,6 @@ function renderEdgesSVG(graph, layout) {
         gapGroups.get(key).push(edge);
     });
     gapGroups.forEach((groupEdges) => {
-        // Sub-group by source so fan-out can share a trunk
         const sourceMap = new Map();
         groupEdges.forEach(edge => {
             if (!sourceMap.has(edge.sourceId))
@@ -1189,54 +1105,74 @@ function renderEdgesSVG(graph, layout) {
             y1: sEdges[0].y1,
             minTargetX: Math.min(...sEdges.map(e => e.x2))
         }));
-        // Order sources top-to-bottom so channel lanes stay ordered
         sources.sort((a, b) => a.y1 - b.y1);
         const maxSourceX = Math.max(...sources.map(s => s.x1));
         const minTargetX = Math.min(...sources.map(s => s.minTargetX));
-        // Available horizontal room for vertical bus channels.
-        // Guarantee a usable channel even if geometry is tight.
-        let gapStart = maxSourceX + 14;
-        let gapEnd = minTargetX - 14;
-        if (gapEnd - gapStart < 30) {
-            // Expand channel into the middle of the available span
+        let gapStart = maxSourceX + 16;
+        let gapEnd = minTargetX - 16;
+        if (gapEnd - gapStart < 35) {
             const mid = (maxSourceX + minTargetX) / 2;
-            gapStart = mid - 20;
-            gapEnd = mid + 20;
+            gapStart = mid - 22;
+            gapEnd = mid + 22;
         }
-        const available = Math.max(30, gapEnd - gapStart);
-        // One dedicated vertical lane per distinct source (min 12px apart)
-        const laneCount = sources.length;
-        const minLane = 12;
-        const needed = (laneCount + 1) * minLane;
-        const laneStep = Math.max(minLane, available / (laneCount + 1));
-        // If we need more room than available, still spread evenly across available
-        const effectiveStep = available / (laneCount + 1);
+        const available = Math.max(35, gapEnd - gapStart);
+        const effectiveStep = available / (sources.length + 1);
+        // Pre-compute all vertical buses in this gap
+        const vBuses = [];
         sources.forEach((source, idx) => {
             const busX = gapStart + (idx + 1) * effectiveStep;
-            const { x1, y1, edges: sEdges } = source;
-            if (sEdges.length === 1) {
-                const { x2, y2 } = sEdges[0];
-                if (Math.abs(y1 - y2) < 1.5) {
-                    // Perfect horizontal alignment – single segment
-                    svg += `<path d="M ${x1} ${y1} H ${x2}" class="circuit-wire" />`;
-                }
-                else {
-                    // Classic three-segment orthogonal route
-                    svg += `<path d="M ${x1} ${y1} H ${busX} V ${y2} H ${x2}" class="circuit-wire" />`;
-                }
+            const { y1, edges: sEdges } = source;
+            if (sEdges.length === 1 && Math.abs(y1 - sEdges[0].y2) < 1.5) {
+                // Direct line, no vertical span
             }
             else {
-                // Fan-out: horizontal stub → vertical trunk → horizontal stubs to each target
                 const allY = [y1, ...sEdges.map(e => e.y2)];
                 const minY = Math.min(...allY);
                 const maxY = Math.max(...allY);
-                svg += `<path d="M ${x1} ${y1} H ${busX}" class="circuit-wire" />`;
-                svg += `<path d="M ${busX} ${minY} V ${maxY}" class="circuit-wire" />`;
-                svg += `<circle cx="${busX}" cy="${y1}" r="3.5" class="circuit-junction" />`;
+                vBuses.push({ busX, minY, maxY, source });
+            }
+        });
+        sources.forEach((source, idx) => {
+            const busInfo = vBuses.find(v => v.source.id === source.id);
+            const busX = busInfo ? busInfo.busX : (gapStart + (idx + 1) * effectiveStep);
+            const { id: srcId, x1, y1, edges: sEdges } = source;
+            const getCrossings = (hX1, hX2, hY) => {
+                const minH = Math.min(hX1, hX2);
+                const maxH = Math.max(hX1, hX2);
+                return vBuses
+                    .filter(v => v.source.id !== srcId && v.busX > minH + 6 && v.busX < maxH - 6 && v.minY <= hY && hY <= v.maxY)
+                    .map(v => v.busX);
+            };
+            if (sEdges.length === 1) {
+                const { x2, y2 } = sEdges[0];
+                if (Math.abs(y1 - y2) < 1.5) {
+                    const crossings = getCrossings(x1, x2, y1);
+                    const d = formatHopPathH(x1, x2, y1, crossings);
+                    svg += `<path d="${d}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
+                }
+                else {
+                    const c1 = getCrossings(x1, busX, y1);
+                    const d1 = formatHopPathH(x1, busX, y1, c1);
+                    const c3 = getCrossings(busX, x2, y2);
+                    const d3 = formatHopPathH(busX, x2, y2, c3);
+                    svg += `<path d="${d1} V ${y2} ${d3.replace(`M ${busX} ${y2}`, '')}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
+                }
+            }
+            else {
+                const allY = [y1, ...sEdges.map(e => e.y2)];
+                const minY = Math.min(...allY);
+                const maxY = Math.max(...allY);
+                const cLead = getCrossings(x1, busX, y1);
+                const dLead = formatHopPathH(x1, busX, y1, cLead);
+                svg += `<path d="${dLead}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
+                svg += `<path d="M ${busX} ${minY} V ${maxY}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
+                svg += `<circle cx="${busX}" cy="${y1}" r="3.8" class="circuit-junction" data-source-id="${srcId}" fill="var(--wire-low)" />`;
                 sEdges.forEach(edge => {
-                    svg += `<path d="M ${busX} ${edge.y2} H ${edge.x2}" class="circuit-wire" />`;
+                    const cBranch = getCrossings(busX, edge.x2, edge.y2);
+                    const dBranch = formatHopPathH(busX, edge.x2, edge.y2, cBranch);
+                    svg += `<path d="${dBranch}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
                     if (Math.abs(edge.y2 - y1) > 1) {
-                        svg += `<circle cx="${busX}" cy="${edge.y2}" r="3.5" class="circuit-junction" />`;
+                        svg += `<circle cx="${busX}" cy="${edge.y2}" r="3.8" class="circuit-junction" data-source-id="${srcId}" fill="var(--wire-low)" />`;
                     }
                 });
             }
@@ -1244,9 +1180,6 @@ function renderEdgesSVG(graph, layout) {
     });
     return svg;
 }
-/* =========================================================
-   RENDER CIRCUIT DIAGRAM
-========================================================= */
 function renderCircuit(graph, container, title) {
     container.innerHTML = "";
     if (!graph || !graph.output)
@@ -1257,163 +1190,302 @@ function renderCircuit(graph, container, title) {
              width="${layout.width}" height="${layout.height}"
              viewBox="0 0 ${layout.width} ${layout.height}">
     `;
-    // Draw wires behind gates
     svg += renderEdgesSVG(graph, layout);
-    // Draw logic gates
     graph.nodes.forEach(node => {
         svg += renderGateSVG(node, layout.positions.get(node.id));
     });
-    // Final Output line and label 'F'
     const outputNode = graph.nodes.find(node => node.id === graph.output);
     const outputPos = layout.positions.get(graph.output);
     const outputInfo = getGateInfo(outputNode);
     const outX = outputInfo.outX(outputPos.x);
     const outY = outputInfo.outY(outputPos.x, outputPos.y);
     svg += `
-        <path d="M ${outX} ${outY} H ${outX + 60}" class="circuit-wire" />
-        <text x="${outX + 75}" y="${outY + 6}" class="output-label">F</text>
+        <path d="M ${outX} ${outY} H ${outX + 60}" class="circuit-wire output-wire" data-source-id="${graph.output}" stroke="var(--wire-low)" stroke-width="2" fill="none" />
+        <g class="output-label-group">
+            <circle cx="${outX + 65}" cy="${outY}" r="15" fill="var(--bg-card-alt)" stroke="var(--border-color)" stroke-width="2" />
+            <text x="${outX + 65}" y="${outY + 5}" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)" class="output-indicator-text">F</text>
+        </g>
     `;
     svg += "</svg>";
-    const wrapper = document.createElement("div");
-    wrapper.className = "circuit-wrapper";
-    wrapper.innerHTML = `
-        <div class="circuit-title">${title}</div>
-        ${svg}
-        <div class="circuit-toolbar">
-            <button type="button" class="download-circuit">⬇ Download PNG</button>
-        </div>
-    `;
-    container.appendChild(wrapper);
-    const button = wrapper.querySelector(".download-circuit");
-    const svgElement = wrapper.querySelector("svg");
-    button.addEventListener("click", () => downloadCircuitPNG(svgElement, title));
+    container.innerHTML = svg;
+    container.querySelectorAll(".pin-interactive").forEach(group => {
+        group.addEventListener("click", () => {
+            const varName = group.getAttribute("data-var");
+            if (varName && currentProbeState.hasOwnProperty(varName)) {
+                currentProbeState[varName] = !currentProbeState[varName];
+                if (window.StudioFX)
+                    window.StudioFX.click(currentProbeState[varName]);
+                updateProbeUI();
+                updateCircuitSignals();
+            }
+        });
+    });
 }
 /* =========================================================
-   DOWNLOAD PNG
+   LIVE PROBE CONTROLLER & MULTIMETER HUD
 ========================================================= */
-function downloadCircuitPNG(svg, title) {
-    const serializer = new XMLSerializer();
-    let source = serializer.serializeToString(svg);
-    if (!source.includes('xmlns="http://www.w3.org/2000/svg"')) {
-        source = source.replace("<svg", '<svg xmlns="http://www.w3.org/2000/svg"');
-    }
-    const width = Number(svg.getAttribute("width"));
-    const height = Number(svg.getAttribute("height"));
-    const blob = new Blob([source], { type: "image/svg+xml;charset=utf-8" });
-    const url = URL.createObjectURL(blob);
-    const image = new Image();
-    image.onload = () => {
-        const scale = 2;
-        const canvas = document.createElement("canvas");
-        canvas.width = width * scale;
-        canvas.height = height * scale;
-        const ctx = canvas.getContext("2d");
-        if (!ctx)
+function setupProbePanels(variables) {
+    currentProbeState = {};
+    variables.forEach(v => { currentProbeState[v] = false; });
+    ["probeSwitchesBasic", "probeSwitchesNand", "probeSwitchesNor"].forEach(panelId => {
+        const panel = document.getElementById(panelId);
+        if (!panel)
             return;
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(image, 0, 0, canvas.width, canvas.height);
-        URL.revokeObjectURL(url);
-        canvas.toBlob(result => {
-            if (!result)
-                return;
-            const downloadUrl = URL.createObjectURL(result);
-            const link = document.createElement("a");
-            link.href = downloadUrl;
-            link.download = title.toLowerCase().replace(/[^a-z0-9]+/g, "_") + ".png";
-            document.body.appendChild(link);
-            link.click();
-            link.remove();
-            URL.revokeObjectURL(downloadUrl);
-        }, "image/png");
-    };
-    image.onerror = () => {
-        URL.revokeObjectURL(url);
-        alert("Unable to download the circuit image.");
-    };
-    image.src = url;
+        panel.innerHTML = variables.map(v => `
+            <div class="probe-switch" data-var="${v}">
+                <span>${v}</span>
+                <span class="probe-val-badge">0</span>
+            </div>
+        `).join("");
+        panel.querySelectorAll(".probe-switch").forEach(btn => {
+            btn.addEventListener("click", () => {
+                const varName = btn.getAttribute("data-var");
+                if (varName) {
+                    currentProbeState[varName] = !currentProbeState[varName];
+                    if (window.StudioFX)
+                        window.StudioFX.click(currentProbeState[varName]);
+                    updateProbeUI();
+                    updateCircuitSignals();
+                }
+            });
+        });
+    });
+    updateProbeUI();
+    updateCircuitSignals();
 }
-/* =========================================================
-   TRUTH TABLE HTML & UTILITIES
-========================================================= */
-function createTruthTableHTML(variables, rows, dontCareIndices) {
-    let html = '<div class="table-container"><table><thead><tr>';
-    variables.forEach(v => { html += `<th>${v}</th>`; });
-    html += '<th>F</th></tr></thead><tbody>';
-    rows.forEach((row, index) => {
-        html += '<tr>';
-        row.inputs.forEach(val => { html += `<td>${val}</td>`; });
-        if (dontCareIndices && dontCareIndices.has(index)) {
-            html += `<td class="dont-care-cell">X</td></tr>`;
-        }
-        else {
-            html += `<td>${row.output}</td></tr>`;
+function updateProbeUI() {
+    document.querySelectorAll(".probe-switch").forEach(btn => {
+        const varName = btn.getAttribute("data-var");
+        if (varName && currentProbeState.hasOwnProperty(varName)) {
+            const isHigh = currentProbeState[varName];
+            btn.classList.toggle("active", isHigh);
+            const badge = btn.querySelector(".probe-val-badge");
+            if (badge)
+                badge.textContent = isHigh ? "1" : "0";
         }
     });
-    html += '</tbody></table></div>';
+    document.querySelectorAll(".pin-interactive").forEach(nodeEl => {
+        const varName = nodeEl.getAttribute("data-var");
+        if (varName && currentProbeState.hasOwnProperty(varName)) {
+            const isHigh = currentProbeState[varName];
+            const textEl = nodeEl.querySelector("text");
+            const rectEl = nodeEl.querySelector("rect");
+            if (textEl)
+                textEl.textContent = `${varName} = ${isHigh ? "1" : "0"}`;
+            if (rectEl) {
+                rectEl.setAttribute("stroke", isHigh ? "var(--wire-high)" : "var(--gate-stroke)");
+                rectEl.setAttribute("stroke-width", isHigh ? "2.5" : "2");
+            }
+        }
+    });
+    if (currentVariables.length > 0) {
+        const rowIdx = currentVariables.reduce((acc, v, idx) => {
+            return acc | ((currentProbeState[v] ? 1 : 0) << (currentVariables.length - 1 - idx));
+        }, 0);
+        document.querySelectorAll("#generatedTruthTable tr").forEach((tr, i) => {
+            if (i > 0)
+                tr.classList.toggle("active-row", (i - 1) === rowIdx);
+        });
+        const vectorStr = currentVariables.map(v => `${v}=${currentProbeState[v] ? 1 : 0}`).join(", ");
+        if (hudVector)
+            hudVector.textContent = vectorStr;
+    }
+}
+function updateCircuitSignals() {
+    if (currentGraphBasic)
+        updateGraphWires(currentGraphBasic, "basicCircuit");
+    if (currentGraphNand)
+        updateGraphWires(currentGraphNand, "nandCircuit");
+    if (currentGraphNor)
+        updateGraphWires(currentGraphNor, "norCircuit");
+}
+function updateGraphWires(graph, containerId) {
+    const container = document.getElementById(containerId);
+    if (!container)
+        return;
+    const values = evaluateAllNodeValues(graph, currentProbeState);
+    values.forEach((isHigh, nodeId) => {
+        container.querySelectorAll(`[data-source-id="${nodeId}"]`).forEach(el => {
+            if (el.tagName.toLowerCase() === "path") {
+                el.classList.toggle("wire-active", isHigh);
+                el.classList.toggle("wire-inactive", !isHigh);
+            }
+            else if (el.tagName.toLowerCase() === "circle") {
+                el.setAttribute("fill", isHigh ? "var(--wire-high)" : "var(--wire-low)");
+            }
+        });
+    });
+    const finalVal = values.get(graph.output);
+    if (finalVal !== undefined) {
+        const ind = container.querySelector(".output-indicator-text");
+        if (ind)
+            ind.textContent = `F = ${finalVal ? "1" : "0"}`;
+        if (containerId === "basicCircuit" && hudOutput) {
+            hudOutput.textContent = `${finalVal ? "1" : "0"} (${finalVal ? "5.0 V" : "0.0 V"})`;
+            hudOutput.style.color = finalVal ? "#10b981" : "var(--text-muted)";
+        }
+    }
+}
+/* =========================================================
+   CODE EXPORTS
+========================================================= */
+function generateVerilog(variables, simplifiedExpr) {
+    const vInputs = variables.join(", ");
+    let expr = simplifiedExpr
+        .replace(/([A-Za-z])'/g, "(~$1)")
+        .replace(/\+/g, " | ")
+        .replace(/\^/g, " ^ ")
+        .replace(/\s+/g, " ");
+    return `// Verilog HDL - Boolean Function Synthesis Module\nmodule bool_function (\n    input  wire ${vInputs},\n    output wire F\n);\n    assign F = ${expr};\nendmodule`;
+}
+function generateCodeFormat(variables, simplifiedExpr) {
+    const args = variables.map(v => `bool ${v}`).join(", ");
+    let expr = simplifiedExpr
+        .replace(/([A-Za-z])'/g, "(!$1)")
+        .replace(/\+/g, " || ")
+        .replace(/\^/g, " ^ ")
+        .replace(/\s+/g, " ");
+    return `// C / C++ / Java / Python Boolean Function\nbool evaluate_logic(${args}) {\n    return ${expr};\n}`;
+}
+function generateLatexFormat(simplifiedExpr) {
+    let expr = simplifiedExpr
+        .replace(/([A-Za-z])'/g, "\\overline{$1}")
+        .replace(/\+/g, " + ")
+        .replace(/\^/g, " \\oplus ");
+    return `$$F = ${expr}$$`;
+}
+function generateMarkdownTable(variables, rows) {
+    let md = "| " + variables.join(" | ") + " | F |\n";
+    md += "| " + variables.map(() => "---").join(" | ") + " | --- |\n";
+    rows.forEach(r => {
+        const outStr = r.output === 1 ? "1" : r.output === 0 ? "0" : "X";
+        md += "| " + r.inputs.join(" | ") + " | " + outStr + " |\n";
+    });
+    return md;
+}
+function copyToClipboard(text, btn) {
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+    navigator.clipboard.writeText(text).then(() => {
+        const prev = btn.textContent;
+        btn.textContent = "✅ Copied!";
+        btn.classList.add("copied");
+        setTimeout(() => {
+            btn.textContent = prev;
+            btn.classList.remove("copied");
+        }, 1600);
+    });
+}
+function setupExportButtons(variables, simplifiedExpr, rows) {
+    const verilog = generateVerilog(variables, simplifiedExpr);
+    const code = generateCodeFormat(variables, simplifiedExpr);
+    const latex = generateLatexFormat(simplifiedExpr);
+    const mdTable = generateMarkdownTable(variables, rows);
+    const vPreview = document.getElementById("verilogPreview");
+    if (vPreview)
+        vPreview.textContent = verilog;
+    const cPreview = document.getElementById("codePreview");
+    if (cPreview)
+        cPreview.textContent = code;
+    const lPreview = document.getElementById("latexPreview");
+    if (lPreview)
+        lPreview.textContent = latex;
+    const copyV = document.getElementById("copyVerilogBtn");
+    if (copyV)
+        copyV.onclick = () => copyToClipboard(verilog, copyV);
+    const copyC = document.getElementById("copyCodeBtn");
+    if (copyC)
+        copyC.onclick = () => copyToClipboard(code, copyC);
+    const copyL = document.getElementById("copyLatexBtn");
+    if (copyL)
+        copyL.onclick = () => copyToClipboard(latex, copyL);
+    const copyMd = document.getElementById("copyMarkdownTableBtn");
+    if (copyMd)
+        copyMd.onclick = () => copyToClipboard(mdTable, copyMd);
+}
+/* =========================================================
+   TRUTH TABLE HTML GENERATION
+========================================================= */
+function createTruthTableHTML(variables, rows, dontCareIndices) {
+    let html = `<table class="truth-table"><thead><tr>`;
+    variables.forEach(v => { html += `<th>${v}</th>`; });
+    html += `<th>F</th></tr></thead><tbody>`;
+    rows.forEach((row, index) => {
+        html += `<tr>`;
+        row.inputs.forEach(val => { html += `<td>${val}</td>`; });
+        let outCell;
+        if (dontCareIndices && dontCareIndices.has(index)) {
+            outCell = `<span class="tt-dontcare">X</span>`;
+        }
+        else if (row.output === 1) {
+            outCell = `<span class="tt-one">1</span>`;
+        }
+        else {
+            outCell = `<span class="tt-zero">0</span>`;
+        }
+        html += `<td>${outCell}</td></tr>`;
+    });
+    html += `</tbody></table>`;
     return html;
 }
 function generateTruthTableInput() {
     const count = Number(truthVariables.value);
     const variables = generateVariableNames(count);
     const combinations = generateCombinations(count);
-    let html = '<div class="table-container"><table><thead><tr>';
+    let html = `<table class="truth-table"><thead><tr>`;
     variables.forEach(v => { html += `<th>${v}</th>`; });
-    html += '<th>F</th></tr></thead><tbody>';
-    combinations.forEach((row, index) => {
-        html += '<tr>';
-        row.forEach(val => { html += `<td>${val}</td>`; });
-        html += `
-            <td>
-                <select class="truth-input" data-row="${index}">
-                    <option value="0">0</option>
-                    <option value="1">1</option>
-                    <option value="-1">X</option>
-                </select>
-            </td>
-        `;
-        html += '</tr>';
+    html += `<th>Output (F)</th></tr></thead><tbody>`;
+    combinations.forEach((inputs, index) => {
+        html += `<tr>`;
+        inputs.forEach(v => { html += `<td>${v}</td>`; });
+        html += `<td>
+            <select class="tt-input-select" data-row="${index}">
+                <option value="0">0</option>
+                <option value="1">1</option>
+                <option value="X">X (Don't Care)</option>
+            </select>
+        </td></tr>`;
     });
-    html += '</tbody></table></div>';
-    document.getElementById("userTruthTable").innerHTML = html;
+    html += `</tbody></table>`;
+    userTruthTable.innerHTML = html;
 }
 function parseNumberList(value) {
-    const numbers = value.match(/\d+/g);
-    if (!numbers)
-        throw new Error("Please enter valid numbers.");
-    return numbers.map(Number);
+    if (!value.trim())
+        return [];
+    return value.split(",").map(v => Number(v.trim())).filter(v => !isNaN(v));
 }
 function getExpressionFromTruthTable() {
     const count = Number(truthVariables.value);
     const variables = generateVariableNames(count);
     const combinations = generateCombinations(count);
-    const selects = document.querySelectorAll(".truth-input");
-    const outputs = [...selects].map(select => Number(select.value));
-    const dontCares = new Set();
-    const rows = combinations.map((inputs, index) => {
-        if (outputs[index] === -1) {
-            dontCares.add(index);
-        }
-        return { inputs, output: outputs[index] };
-    });
+    const selects = userTruthTable.querySelectorAll(".tt-input-select");
+    const rows = [];
     const minterms = [];
-    rows.forEach((row, index) => { if (row.output === 1)
-        minterms.push(index); });
-    return {
-        variables,
-        rows,
-        expression: mintermsToExpression(minterms, count),
-        dontCares
-    };
+    const dontCares = new Set();
+    selects.forEach((sel, i) => {
+        const val = sel.value;
+        if (val === "1") {
+            rows.push({ inputs: combinations[i], output: 1 });
+            minterms.push(i);
+        }
+        else if (val === "X") {
+            rows.push({ inputs: combinations[i], output: -1 });
+            dontCares.add(i);
+        }
+        else {
+            rows.push({ inputs: combinations[i], output: 0 });
+        }
+    });
+    const expression = mintermsToExpression(minterms, count, dontCares.size > 0 ? dontCares : undefined);
+    return { variables, rows, expression, dontCares };
 }
 /* =========================================================
-   KARNAUGH MAP
+   KARNAUGH MAP GENERATION & OVERLAYS
 ========================================================= */
 function grayCode(n) {
-    if (n === 0)
-        return [0];
     const result = [];
-    for (let i = 0; i < (1 << n); i++) {
+    const total = 1 << n;
+    for (let i = 0; i < total; i++) {
         result.push(i ^ (i >> 1));
     }
     return result;
@@ -1424,19 +1496,15 @@ function patternToMinterms(pattern, variableCount) {
         if (pattern[i] === "-")
             dashes.push(i);
     }
+    const total = 1 << dashes.length;
     const result = [];
-    const count = 1 << dashes.length;
-    for (let mask = 0; mask < count; mask++) {
+    for (let mask = 0; mask < total; mask++) {
         let minterm = 0;
-        let valid = true;
-        for (let i = 0; i < pattern.length; i++) {
+        for (let i = 0; i < variableCount; i++) {
             if (pattern[i] === "1") {
                 minterm |= 1 << (variableCount - 1 - i);
             }
-            else if (pattern[i] === "0") {
-                // bit already 0
-            }
-            else {
+            else if (pattern[i] === "-") {
                 const dashPos = dashes.indexOf(i);
                 if (dashPos !== -1 && (mask & (1 << dashPos))) {
                     minterm |= 1 << (variableCount - 1 - i);
@@ -1448,10 +1516,9 @@ function patternToMinterms(pattern, variableCount) {
     return result;
 }
 function generateKarnaughMap(variables, rows, dontCares, implicants) {
-    var _a;
     const variableCount = variables.length;
     if (variableCount < 2 || variableCount > 4) {
-        return `<div class="karnaugh-map-note">Karnaugh maps are displayed for 2-4 variables.</div>`;
+        return `<div class="help-text" style="text-align:center;">Karnaugh maps are displayed for 2 to 4 variables.</div>`;
     }
     let colBits;
     let rowBits;
@@ -1469,7 +1536,6 @@ function generateKarnaughMap(variables, rows, dontCares, implicants) {
     }
     const colGray = grayCode(colBits);
     const rowGray = grayCode(rowBits);
-    // Build value grid: grid[rowIdx][colIdx] = minterm index
     const grid = [];
     for (let ri = 0; ri < rowGray.length; ri++) {
         grid[ri] = [];
@@ -1488,44 +1554,36 @@ function generateKarnaughMap(variables, rows, dontCares, implicants) {
             grid[ri][ci] = minterm;
         }
     }
-    // Row & column labels
     const rowLabels = rowGray.map(v => v.toString(2).padStart(rowBits, "0"));
     const colLabels = colGray.map(v => v.toString(2).padStart(colBits, "0"));
     const rowVarStr = variables.slice(0, rowBits).join("");
     const colVarStr = variables.slice(rowBits).join("");
-    // Group colors & legend
     const groupColors = ["km-group-1", "km-group-2", "km-group-3", "km-group-4", "km-group-5"];
+    const borderColors = ["#ef4444", "#2563eb", "#16a34a", "#ea580c", "#9333ea"];
     const legendHTML = (implicants && implicants.length > 0)
         ? `<div class="karnaugh-map-legend">
-${implicants.map((imp, i) => {
-            const color = groupColors[i % groupColors.length];
-            const borderColors = ["#ef4444", "#2563eb", "#16a34a", "#ea580c", "#9333ea"];
+            ${implicants.map((imp, i) => {
             const borderColor = borderColors[i % borderColors.length];
-            return `            <span class="legend-item">
-                <span class="legend-swatch" style="border-color:${borderColor};background:${borderColor}15"></span>
-                ${patternToSOPTerm(imp.pattern, variables)}
-            </span>`;
-        }).join("\n")}
+            return `<span class="legend-item">
+                    <span class="legend-swatch" style="border-color:${borderColor};background:${borderColor}20"></span>
+                    ${patternToSOPTerm(imp.pattern, variables)}
+                </span>`;
+        }).join("")}
         </div>`
         : "";
     let html = `<div class="karnaugh-map-wrapper">`;
     html += `<div id="karnaughMapGrid" style="position:relative;display:inline-block;">`;
     html += `<table class="karnaugh-map">`;
-    // Header row: corner cell + column headers
-    html += `<thead><tr>`;
-    html += `<th class="km-corner" style="font-size:14px;">${rowVarStr}\\${colVarStr}</th>`;
+    html += `<thead><tr><th style="font-size:14px;">${rowVarStr}\\${colVarStr}</th>`;
     for (const label of colLabels) {
-        html += `<th class="km-col-label">${label}</th>`;
+        html += `<th>${label}</th>`;
     }
-    html += `</tr></thead>`;
-    // Body rows
-    html += `<tbody>`;
+    html += `</tr></thead><tbody>`;
     for (let ri = 0; ri < rowGray.length; ri++) {
-        html += `<tr>`;
-        html += `<th class="km-row-label">${rowLabels[ri]}</th>`;
+        html += `<tr><th>${rowLabels[ri]}</th>`;
         for (let ci = 0; ci < colGray.length; ci++) {
             const minterm = grid[ri][ci];
-            const output = (_a = rows[minterm]) === null || _a === void 0 ? void 0 : _a.output;
+            const output = rows[minterm]?.output;
             let cellClass = "km-zero";
             let cellValue = "0";
             if (output === 1) {
@@ -1544,19 +1602,15 @@ ${implicants.map((imp, i) => {
         html += `</tr>`;
     }
     html += `</tbody></table>`;
-    // Group overlay placeholders
     if (implicants && implicants.length > 0) {
         for (let i = 0; i < implicants.length; i++) {
             html += `<div class="km-group-overlay ${groupColors[i % groupColors.length]}" id="kmOverlay${i}" style="display:none;"></div>`;
         }
     }
-    html += `</div>`; // end karnaughMapGrid
+    html += `</div>`;
     if (legendHTML)
         html += legendHTML;
-    if (variableCount >= 3) {
-        html += `<div class="karnaugh-map-note">Read the binary labels on rows (\(${rowVarStr}\)) and columns (\(${colVarStr}\)). Adjacent cells differ by one bit, enabling visual grouping.</div>`;
-    }
-    html += `</div>`; // end wrapper
+    html += `</div>`;
     return html;
 }
 function positionKarnaughOverlays(implicants, variableCount) {
@@ -1566,34 +1620,17 @@ function positionKarnaughOverlays(implicants, variableCount) {
     const table = grid.querySelector(".karnaugh-map");
     if (!table)
         return;
-    let colBits;
-    let rowBits;
-    if (variableCount === 2) {
-        rowBits = 1;
-        colBits = 1;
-    }
-    else if (variableCount === 3) {
-        rowBits = 1;
-        colBits = 2;
-    }
-    else {
-        rowBits = 2;
-        colBits = 2;
-    }
-    const groupColors = ["km-group-1", "km-group-2", "km-group-3", "km-group-4", "km-group-5"];
     implicants.forEach((imp, i) => {
         const overlay = document.getElementById(`kmOverlay${i}`);
         if (!overlay)
             return;
         const minterms = patternToMinterms(imp.pattern, variableCount);
-        // Find bounding row/col indices
         let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
         const cellData = table.querySelectorAll("td[data-row]");
         cellData.forEach(cell => {
-            var _a;
             const row = parseInt(cell.getAttribute("data-row") || "-1");
             const col = parseInt(cell.getAttribute("data-col") || "-1");
-            const mintermText = ((_a = cell.querySelector(".km-minterm")) === null || _a === void 0 ? void 0 : _a.textContent) || "";
+            const mintermText = cell.querySelector(".km-minterm")?.textContent || "";
             const m = parseInt(mintermText.replace("m", ""));
             if (!isNaN(m) && minterms.includes(m)) {
                 if (row < minRow)
@@ -1608,7 +1645,6 @@ function positionKarnaughOverlays(implicants, variableCount) {
         });
         if (minRow === Infinity)
             return;
-        // Data cells start at row offset 1 (after row-label header)
         const firstCell = table.querySelector(`td[data-row="${minRow}"][data-col="${minCol}"]`);
         const lastCell = table.querySelector(`td[data-row="${maxRow}"][data-col="${maxCol}"]`);
         if (!firstCell || !lastCell)
@@ -1622,14 +1658,14 @@ function positionKarnaughOverlays(implicants, variableCount) {
         const width = lastRect.right - firstRect.left + 2 * padding;
         const height = lastRect.bottom - firstRect.top + 2 * padding;
         overlay.style.display = "block";
-        overlay.style.left = left + "px";
-        overlay.style.top = top + "px";
-        overlay.style.width = width + "px";
-        overlay.style.height = height + "px";
+        overlay.style.left = `${left}px`;
+        overlay.style.top = `${top}px`;
+        overlay.style.width = `${width}px`;
+        overlay.style.height = `${height}px`;
     });
 }
 /* =========================================================
-   CIRCUIT VERIFICATION & DISPLAY
+   VERIFICATION & ERRORS
 ========================================================= */
 function verifyAllCircuits(originalExpression, simplifiedExpression, variables, rows, basicGraph, nandGraph, norGraph) {
     const original = evaluateExpression(originalExpression, variables);
@@ -1640,7 +1676,6 @@ function verifyAllCircuits(originalExpression, simplifiedExpression, variables, 
         variables.forEach((variable, variableIndex) => {
             assignment[variable] = Boolean(row.inputs[variableIndex]);
         });
-        // Don't care rows (output === -1) can produce any output
         if (row.output === -1)
             continue;
         const expected = Boolean(row.output);
@@ -1661,19 +1696,21 @@ function verifyAllCircuits(originalExpression, simplifiedExpression, variables, 
 }
 function renderVerification(passed, variableCount) {
     if (passed) {
+        if (window.StudioFX)
+            window.StudioFX.success();
         return `
             <div class="verification-success">
                 <strong>✅ All Implementations Verified Successfully</strong>
                 <br><br>
-                The original function, simplified expression, AND / OR / NOT circuit, NAND-only circuit and NOR-only circuit produce identical outputs for all <strong>${2 ** variableCount}</strong> possible input combinations.
+                The original Boolean function, simplified expression, AND/OR/NOT circuit, NAND-only circuit, and NOR-only circuit produce 100% identical outputs for all <strong>${2 ** variableCount}</strong> possible input combinations.
             </div>
         `;
     }
     return `
         <div class="verification-failure">
-            <strong>❌ Verification Failed</strong>
+            <strong>❌ Verification Issue Detected</strong>
             <br><br>
-            One or more circuit implementations does not match the original Boolean function.
+            One or more circuit implementations does not match the expected Boolean truth table.
         </div>
     `;
 }
@@ -1698,6 +1735,8 @@ solveButton.addEventListener("click", solve);
 function solve() {
     clearError();
     circuitCounter = 0;
+    if (window.StudioFX)
+        window.StudioFX.relay();
     try {
         let expression;
         let variables;
@@ -1739,7 +1778,6 @@ function solve() {
             if (mintermList.length === 0 && dontCareList.length === 0) {
                 throw new Error("Please enter at least minterms or don't care terms.");
             }
-            // Validate no overlap between minterms and don't cares
             const overlap = mintermList.filter(m => dontCareList.includes(m));
             if (overlap.length > 0) {
                 throw new Error(`Terms ${overlap.join(", ")} appear in both minterms and don't cares.`);
@@ -1747,19 +1785,15 @@ function solve() {
             dontCares = new Set(dontCareList);
             hasDontCares = dontCares.size > 0;
             expression = mintermsToExpression(mintermList, count, dontCares);
-            // Build truth table rows: minterms = 1, don't cares = -1, rest = 0
             const combinations = generateCombinations(count);
             rows = combinations.map((inputs, index) => {
                 let output;
-                if (mintermList.includes(index)) {
+                if (mintermList.includes(index))
                     output = 1;
-                }
-                else if (dontCares.has(index)) {
+                else if (dontCares.has(index))
                     output = -1;
-                }
-                else {
+                else
                     output = 0;
-                }
                 return { inputs, output };
             });
         }
@@ -1771,10 +1805,8 @@ function solve() {
             dontCares = result.dontCares;
             hasDontCares = dontCares.size > 0;
         }
-        // For truth table input, detect don't cares from rows
-        if (inputType.value === "truthTable") {
-            hasDontCares = dontCares.size > 0;
-        }
+        currentVariables = variables;
+        currentRows = rows;
         document.getElementById("originalExpression").textContent = expression;
         document.getElementById("generatedTruthTable").innerHTML = createTruthTableHTML(variables, rows, hasDontCares ? dontCares : undefined);
         document.getElementById("canonicalSOP").textContent = generateCanonicalSOP(rows, variables, hasDontCares ? dontCares : undefined);
@@ -1786,18 +1818,16 @@ function solve() {
                 ones.push(index);
             else if (row.output === 0)
                 zeros.push(index);
-            // Don't cares (output === -1) are excluded from both
         });
         const simplifiedSOP = minimizeSOP(ones, variables, hasDontCares ? dontCares : undefined);
         const simplifiedPOS = minimizePOS(zeros, variables, hasDontCares ? dontCares : undefined);
         document.getElementById("simplifiedExpression").textContent = simplifiedSOP.expression;
-        // Render Karnaugh Map
+        if (hudTermCount)
+            hudTermCount.textContent = `${simplifiedSOP.implicants.length} Implicants`;
         document.getElementById("karnaughMap").innerHTML = generateKarnaughMap(variables, rows, hasDontCares ? dontCares : undefined, simplifiedSOP.implicants);
-        // Position K-map group overlays after DOM update
         requestAnimationFrame(() => {
             positionKarnaughOverlays(simplifiedSOP.implicants, variables.length);
         });
-        // Show don't care summary when applicable
         if (hasDontCares) {
             const dontCareResults = document.getElementById("dontCareResults");
             const dontCareSummary = document.getElementById("dontCareSummary");
@@ -1807,34 +1837,26 @@ function solve() {
                 const dcIndices = [...dontCares].sort((a, b) => a - b).join(", ") || "none";
                 const totalTerms = ones.length + dontCares.size;
                 dontCareSummary.innerHTML = `
-                    <div class="dont-care-summary-grid">
-                        <div class="dont-care-summary-item">
-                            <span class="dont-care-label">Minterms (F = 1)</span>
-                            <span class="dont-care-value">{${mintermIndices}}</span>
-                        </div>
-                        <div class="dont-care-summary-item">
-                            <span class="dont-care-label">Don't Cares (F = X)</span>
-                            <span class="dont-care-value dont-care-highlight">{${dcIndices}}</span>
-                        </div>
-                        <div class="dont-care-summary-item">
-                            <span class="dont-care-label">Total Terms Used in Minimization</span>
-                            <span class="dont-care-value">${totalTerms} (minterms: ${ones.length}, don't cares: ${dontCares.size})</span>
-                        </div>
+                    <div style="font-size:14px;line-height:1.7;">
+                        <div><strong>Minterms (F = 1):</strong> {${mintermIndices}}</div>
+                        <div><strong>Don't Cares (F = X):</strong> <span style="color:#f59e0b;font-weight:700;">{${dcIndices}}</span></div>
+                        <div><strong>Total terms used in minimization:</strong> ${totalTerms}</div>
                     </div>
                 `;
             }
         }
-        const basicGraph = buildBasicSOPCircuit(simplifiedSOP.implicants, variables);
-        const nandGraph = buildNANDCircuit(simplifiedSOP.implicants, variables);
-        const norGraph = buildNORCircuit(simplifiedPOS.implicants, variables);
-        renderCircuit(basicGraph, document.getElementById("basicCircuit"), "AND / OR / NOT Circuit");
-        renderCircuit(nandGraph, document.getElementById("nandCircuit"), "NAND-Only Circuit");
-        renderCircuit(norGraph, document.getElementById("norCircuit"), "NOR-Only Circuit");
-        const verified = verifyAllCircuits(expression, simplifiedSOP.expression, variables, rows, basicGraph, nandGraph, norGraph);
+        setupExportButtons(variables, simplifiedSOP.expression, rows);
+        currentGraphBasic = buildBasicSOPCircuit(simplifiedSOP.implicants, variables);
+        currentGraphNand = buildNANDCircuit(simplifiedSOP.implicants, variables);
+        currentGraphNor = buildNORCircuit(simplifiedPOS.implicants, variables);
+        renderCircuit(currentGraphBasic, document.getElementById("basicCircuit"), "AND / OR / NOT Circuit");
+        renderCircuit(currentGraphNand, document.getElementById("nandCircuit"), "NAND-Only Circuit");
+        renderCircuit(currentGraphNor, document.getElementById("norCircuit"), "NOR-Only Circuit");
+        setupProbePanels(variables);
+        const verified = verifyAllCircuits(expression, simplifiedSOP.expression, variables, rows, currentGraphBasic, currentGraphNand, currentGraphNor);
         document.getElementById("verification").innerHTML = renderVerification(verified, variables.length);
         results.classList.remove("hidden");
         results.scrollIntoView({ behavior: "smooth" });
-        saveToHistory(expression);
     }
     catch (error) {
         console.error(error);
@@ -1845,79 +1867,23 @@ function solve() {
     }
 }
 /* =========================================================
-   EXPRESSION HISTORY (localStorage)
+   TRY EXAMPLE PRESETS
 ========================================================= */
-const HISTORY_KEY = "boolSolver_history";
-const HISTORY_MAX = 5;
-function getHistory() {
-    try {
-        const raw = localStorage.getItem(HISTORY_KEY);
-        return raw ? JSON.parse(raw) : [];
-    }
-    catch (_a) {
-        return [];
-    }
-}
-function saveToHistory(expression) {
-    if (!expression.trim())
-        return;
-    const history = getHistory().filter(e => e !== expression);
-    history.unshift(expression);
-    if (history.length > HISTORY_MAX)
-        history.length = HISTORY_MAX;
-    try {
-        localStorage.setItem(HISTORY_KEY, JSON.stringify(history));
-    }
-    catch ( /* quota exceeded, ignore */_a) { /* quota exceeded, ignore */ }
-}
-function renderHistoryDropdown() {
-    const history = getHistory();
-    let dropdown = document.getElementById("historyDropdown");
-    if (!dropdown) {
-        dropdown = document.createElement("div");
-        dropdown.id = "historyDropdown";
-        dropdown.className = "history-dropdown hidden";
-        const inputRow = expressionInput.closest(".form-group");
-        if (inputRow)
-            inputRow.appendChild(dropdown);
-    }
-    if (history.length === 0) {
-        dropdown.classList.add("hidden");
-        return;
-    }
-    dropdown.innerHTML = history.map(expr => `<div class="history-item" data-expr="${expr.replace(/"/g, '&quot;')}">${expr}</div>`).join("");
-    dropdown.classList.remove("hidden");
-    dropdown.querySelectorAll(".history-item").forEach(item => {
-        item.addEventListener("click", () => {
-            const expr = item.getAttribute("data-expr") || "";
-            expressionInput.value = expr;
-            dropdown.classList.add("hidden");
-            expressionInput.focus();
-        });
-    });
-}
-expressionInput.addEventListener("focus", renderHistoryDropdown);
-document.addEventListener("click", (e) => {
-    const target = e.target;
-    if (!target.closest("#historyDropdown") && target !== expressionInput) {
-        const dropdown = document.getElementById("historyDropdown");
-        if (dropdown)
-            dropdown.classList.add("hidden");
-    }
-});
 const examplePresets = [
     { expression: "A'B + BC", description: "3-variable SOP" },
-    { expression: "AB + A'C", description: "3-variable example" },
+    { expression: "AB + A'C", description: "3-variable multiplex" },
     { expression: "(A+B)(A'+C)", description: "3-variable POS" },
     { expression: "ABC + A'B'C'", description: "Minterms 0 and 7" },
     { expression: "AB + AC + BC", description: "Majority function" },
-    { expression: "A^B", description: "XOR example" },
-    { expression: "A'B'C + A'BC' + AB'C' + ABC", description: "XOR-like pattern" }
+    { expression: "A^B", description: "XOR 2-var" },
+    { expression: "A'B'C + A'BC' + AB'C' + ABC", description: "Full Adder Sum" }
 ];
 let exampleIndex = 0;
 const tryExampleBtn = document.getElementById("tryExampleBtn");
 if (tryExampleBtn) {
     tryExampleBtn.addEventListener("click", () => {
+        if (window.StudioFX)
+            window.StudioFX.click(true);
         inputType.value = "expression";
         updateInputInterface();
         clearResults();
@@ -1929,43 +1895,20 @@ if (tryExampleBtn) {
     });
 }
 /* =========================================================
-   COPY TO CLIPBOARD
+   COPY BUTTONS
 ========================================================= */
 document.querySelectorAll(".copy-btn").forEach(button => {
     button.addEventListener("click", () => {
-        var _a;
         const expressionRow = button.closest(".expression-row");
         if (!expressionRow)
             return;
         const box = expressionRow.querySelector(".expression-box");
         if (!box)
             return;
-        const text = (_a = box.textContent) === null || _a === void 0 ? void 0 : _a.trim();
+        const text = box.textContent?.trim();
         if (!text)
             return;
-        navigator.clipboard.writeText(text).then(() => {
-            button.textContent = "✅ Copied!";
-            button.classList.add("copied");
-            setTimeout(() => {
-                button.textContent = "📋 Copy";
-                button.classList.remove("copied");
-            }, 1500);
-        }).catch(() => {
-            const textarea = document.createElement("textarea");
-            textarea.value = text;
-            textarea.style.position = "fixed";
-            textarea.style.opacity = "0";
-            document.body.appendChild(textarea);
-            textarea.select();
-            document.execCommand("copy");
-            document.body.removeChild(textarea);
-            button.textContent = "✅ Copied!";
-            button.classList.add("copied");
-            setTimeout(() => {
-                button.textContent = "📋 Copy";
-                button.classList.remove("copied");
-            }, 1500);
-        });
+        copyToClipboard(text, button);
     });
 });
 /* =========================================================
@@ -1973,3 +1916,4 @@ document.querySelectorAll(".copy-btn").forEach(button => {
 ========================================================= */
 updateNumericExamples();
 generateTruthTableInput();
+initZoomPanControls();

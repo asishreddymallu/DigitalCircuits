@@ -3,16 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Digital Circuits Simulator - Adders, Subtractors, and Multiplexers with interactive truth tables and circuit diagrams">
+    <meta name="description" content="Combinational Digital Circuits Simulator - Adders, Subtractors, MUX, DEMUX, Encoders and Comparators">
     <title>Digital Circuits Simulator</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="fx.js"></script>
 </head>
 <body>
+
+<!-- GLOBAL NAVIGATION BAR -->
+<nav class="global-navbar">
+    <div class="nav-container">
+        <a href="../index.html" class="nav-brand">
+            <span class="brand-icon-pulse">⚡</span>
+            <span>Digital Circuits Suite</span>
+            <span class="brand-badge">Tool 2</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="../index.html" class="nav-link">🏠 Home</a></li>
+            <li><a href="../Web1/index.html" class="nav-link">⚡ Boolean Solver</a></li>
+            <li><a href="index.html" class="nav-link active">🔧 Circuits Sim</a></li>
+            <li><a href="../Web3/index.html" class="nav-link">🔢 7-Segment Display</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
+                🔊 <span class="sound-label">Sound: ON</span>
+            </button>
+            <button type="button" class="nav-tool-btn theme-toggle-btn" aria-label="Toggle theme">
+                🌙 <span class="theme-label">Dark Mode</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- BREADCRUMB BAR -->
+<div class="breadcrumb-bar">
+    <a href="../index.html">Home</a>
+    <span>/</span>
+    <span id="breadcrumbCategory">Circuits Simulator</span>
+</div>
 
 <header class="site-header">
     <div class="header-content">
         <h1>Digital Circuits Simulator</h1>
-        <p>Adders • Subtractors • Multiplexers</p>
+        <p>Interactive Logic Simulation • Real-Time Waveform Analyzer • Live Wire Tracing</p>
     </div>
 </header>
 
@@ -23,157 +57,150 @@
         <div class="section-heading">
             <span class="section-number">1</span>
             <div>
-                <h2>Choose a Circuit Type</h2>
-                <p>Select the category of digital circuit you want to explore.</p>
+                <h2>Choose a Circuit Category</h2>
+                <p>Select a digital logic module category to explore.</p>
             </div>
         </div>
         <div class="category-grid">
-            <button class="category-btn" data-category="adder">
+            <button class="category-btn" data-category="adders">
                 <span class="category-icon" aria-hidden="true">➕</span>
-                <span class="category-title">Adder</span>
-                <span class="category-desc">Binary addition circuits</span>
+                <span class="category-title">Adders</span>
+                <span class="category-desc">Half Adder, Full Adder, and 4-Bit Ripple Carry Adder</span>
             </button>
-            <button class="category-btn" data-category="subtractor">
+            <button class="category-btn" data-category="subtractors">
                 <span class="category-icon" aria-hidden="true">➖</span>
-                <span class="category-title">Subtractor</span>
-                <span class="category-desc">Binary subtraction circuits</span>
+                <span class="category-title">Subtractors</span>
+                <span class="category-desc">Half Subtractor, Full Subtractor, and 4-Bit Ripple Borrow Subtractor</span>
             </button>
-            <button class="category-btn" data-category="multiplexer">
+            <button class="category-btn" data-category="multiplexers">
                 <span class="category-icon" aria-hidden="true">🔀</span>
-                <span class="category-title">Multiplexer</span>
-                <span class="category-desc">Data selector circuits</span>
+                <span class="category-title">Multiplexers (MUX)</span>
+                <span class="category-desc">2:1, 4:1, and 8:1 Multiplexer data selectors</span>
+            </button>
+            <button class="category-btn" data-category="demultiplexers">
+                <span class="category-icon" aria-hidden="true">🔄</span>
+                <span class="category-title">Demultiplexers (DEMUX)</span>
+                <span class="category-desc">1:2, 1:4, and 1:8 Demultiplexer data distributors</span>
+            </button>
+            <button class="category-btn" data-category="decoders_encoders">
+                <span class="category-icon" aria-hidden="true">🔢</span>
+                <span class="category-title">Decoders & Encoders</span>
+                <span class="category-desc">2-to-4 Decoder, 3-to-8 Decoder, and 4-to-2 Priority Encoder</span>
+            </button>
+            <button class="category-btn" data-category="comparators">
+                <span class="category-icon" aria-hidden="true">⚖️</span>
+                <span class="category-title">Magnitude Comparators</span>
+                <span class="category-desc">1-Bit and 2-Bit Magnitude Comparators (A > B, A = B, A < B)</span>
             </button>
         </div>
     </section>
 
-    <!-- STEP 2: Choose Sub-Circuit (hidden until category selected) -->
+    <!-- STEP 2: Choose Subcircuit -->
     <section id="step2" class="card hidden">
         <div class="section-heading">
             <span class="section-number">2</span>
             <div>
-                <h2 id="step2Title">Choose a Circuit</h2>
-                <p id="step2Desc">Select the specific circuit variant.</p>
+                <h2 id="step2Title">Select a Circuit Model</h2>
+                <p>Select the specific circuit configuration you want to simulate.</p>
             </div>
         </div>
-
-        <!-- Adder Sub-Options -->
-        <div id="adderOptions" class="option-grid hidden">
-            <button class="option-btn" data-circuit="halfAdder">
-                <span class="option-label">Half Adder</span>
-                <span class="option-detail">2 inputs (A, B) → Sum, Carry</span>
-            </button>
-            <button class="option-btn" data-circuit="fullAdder">
-                <span class="option-label">Full Adder</span>
-                <span class="option-detail">3 inputs (A, B, Cin) → Sum, Cout</span>
-            </button>
-            <button class="option-btn" data-circuit="rippleCarryAdder4">
-                <span class="option-label">4-Bit Ripple Carry Adder</span>
-                <span class="option-detail">8 inputs (A[3:0], B[3:0]) → S[3:0], Cout</span>
-            </button>
-        </div>
-
-        <!-- Subtractor Sub-Options -->
-        <div id="subtractorOptions" class="option-grid hidden">
-            <button class="option-btn" data-circuit="halfSubtractor">
-                <span class="option-label">Half Subtractor</span>
-                <span class="option-detail">2 inputs (A, B) → Diff, Borrow</span>
-            </button>
-            <button class="option-btn" data-circuit="fullSubtractor">
-                <span class="option-label">Full Subtractor</span>
-                <span class="option-detail">3 inputs (A, B, Bin) → Diff, Bout</span>
-            </button>
-            <button class="option-btn" data-circuit="rippleBorrowSubtractor4">
-                <span class="option-label">4-Bit Ripple Borrow Subtractor</span>
-                <span class="option-detail">8 inputs (A[3:0], B[3:0]) → D[3:0], Bout</span>
-            </button>
-        </div>
-
-        <!-- Multiplexer Sub-Options -->
-        <div id="multiplexerOptions" class="option-grid hidden">
-            <button class="option-btn" data-circuit="mux2to1">
-                <span class="option-label">2 : 1 MUX</span>
-                <span class="option-detail">3 inputs (I0, I1, S) → Y</span>
-            </button>
-            <button class="option-btn" data-circuit="mux4to1">
-                <span class="option-label">4 : 1 MUX</span>
-                <span class="option-detail">6 inputs (I0–I3, S0, S1) → Y</span>
-            </button>
-            <button class="option-btn" data-circuit="mux8to1">
-                <span class="option-label">8 : 1 MUX</span>
-                <span class="option-detail">11 inputs (I0–I7, S0–S2) → Y</span>
-            </button>
-        </div>
-
-        <button id="backBtn" class="back-button" type="button">
-            ← Back to Categories
-        </button>
+        <div id="subcategoryGrid" class="subcategory-grid"></div>
     </section>
 
-    <!-- STEP 3: Circuit Workspace (hidden until sub-circuit selected) -->
+    <!-- STEP 3: Workspace View -->
     <section id="step3" class="hidden">
 
         <div class="workspace-header">
-            <button id="backToStep2" class="back-link" type="button">← Back</button>
-            <h2 id="circuitTitle">Circuit</h2>
+            <button id="backToStep2" class="back-link" type="button">← Back to Circuits</button>
+            <h2 id="circuitTitle">Circuit Workspace</h2>
         </div>
 
-        <!-- Input Panel -->
+        <!-- Interactive Input Controls -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">A</span>
                 <div>
-                    <h2>Inputs</h2>
-                    <p>Set the input values for the circuit.</p>
+                    <h2>Interactive Signal Inputs</h2>
+                    <p>Toggle binary inputs below or click input nodes on the circuit schematic.</p>
                 </div>
             </div>
-            <div id="inputPanel" class="input-panel"></div>
-            <p class="live-hint">Toggle any input above — the circuit updates instantly.</p>
+            <div id="inputControls" class="input-panel"></div>
+            <div id="rippleControls" class="ripple-controls hidden">
+                <button type="button" id="rippleAnimateBtn" class="ripple-btn">▶ Animate Ripple Propagation</button>
+                <span id="rippleStepBadge" class="ripple-step-badge">Stage: Idle</span>
+            </div>
+            <p class="live-hint">💡 Click any input switch above — signals propagate in real time through logic gates.</p>
+        </section>
+
+        <!-- Circuit Schematic with Zoom/Pan -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">B</span>
+                <div>
+                    <h2>Logic Gate Schematic</h2>
+                    <p>Dynamic schematic with real-time active wire signals (Green = 1 / High, Gray = 0 / Low).</p>
+                </div>
+            </div>
+            <div class="circuit-header-row">
+                <button type="button" class="tool-btn" id="zoomInBtn" title="Zoom In">🔍+</button>
+                <button type="button" class="tool-btn" id="zoomOutBtn" title="Zoom Out">🔍−</button>
+                <button type="button" class="tool-btn" id="zoomResetBtn" title="Reset Zoom">↺ Reset</button>
+            </div>
+            <div id="circuitDiagram" class="circuit-container"></div>
+        </section>
+
+        <!-- Real-Time Logic Analyzer Waveform Timing Diagram -->
+        <section class="card waveform-card">
+            <div class="section-heading">
+                <span class="section-number">C</span>
+                <div>
+                    <h2>Digital Logic Analyzer (Real-Time Timing Diagram)</h2>
+                    <p>Digital oscilloscope recording clock and logic state transitions as you interact with inputs.</p>
+                </div>
+            </div>
+            <div class="waveform-canvas-container">
+                <canvas id="timingCanvas" width="900" height="180"></canvas>
+            </div>
         </section>
 
         <!-- Truth Table -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">B</span>
+                <span class="section-number">D</span>
                 <div>
                     <h2>Truth Table</h2>
-                    <p>Output for every possible input combination.</p>
+                    <p>Complete Boolean truth table with the active input state highlighted in real time.</p>
                 </div>
             </div>
             <div id="truthTable" class="result-table-container"></div>
         </section>
 
-        <!-- Circuit Diagram -->
+        <!-- Boolean Expressions & Synthesizable Verilog -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">C</span>
+                <span class="section-number">E</span>
                 <div>
-                    <h2>Circuit Diagram</h2>
-                    <p>Interactive schematic with current input values highlighted.</p>
-                </div>
-            </div>
-            <div id="circuitDiagram" class="circuit-container"></div>
-        </section>
-
-        <!-- Boolean Expressions -->
-        <section class="card">
-            <div class="section-heading">
-                <span class="section-number">D</span>
-                <div>
-                    <h2>Boolean Expressions</h2>
-                    <p>Logic expressions for each output.</p>
+                    <h2>Boolean Expressions & Verilog HDL</h2>
+                    <p>Mathematical expressions and synthesizable hardware description code.</p>
                 </div>
             </div>
             <div id="booleanExpressions" class="expressions-container"></div>
+            <div class="verilog-container">
+                <div class="verilog-header">
+                    <span class="verilog-title">💻 Synthesizable Verilog Module</span>
+                    <button type="button" id="copyVerilogBtn" class="copy-btn">📋 Copy Verilog</button>
+                </div>
+                <pre id="verilogCode" class="verilog-box"></pre>
+            </div>
         </section>
 
     </section>
-
 </main>
 
 <footer class="site-footer">
     <h3>Digital Circuits Simulator</h3>
-    <p>Adders • Subtractors • Multiplexers</p>
-    <p class="footer-small">Interactive truth tables, circuit diagrams & Boolean expressions</p>
+    <p>Digital Circuits Suite</p>
+    <p class="footer-small">Designed for High-Performance Digital Logic Simulation</p>
 </footer>
 
 <script src="script.js"></script>

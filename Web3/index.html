@@ -3,16 +3,50 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="7-Segment Display Simulator - Interactive BCD-to-7-Segment Decoder with Truth Tables and Circuit Diagrams">
+    <meta name="description" content="7-Segment Display Simulator - Interactive BCD & Hexadecimal Decoder, Truth Tables, K-Maps and Circuit Diagrams">
     <title>7-Segment Display Simulator</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="fx.js"></script>
 </head>
 <body>
+
+<!-- GLOBAL NAVIGATION BAR -->
+<nav class="global-navbar">
+    <div class="nav-container">
+        <a href="../index.html" class="nav-brand">
+            <span class="brand-icon-pulse">⚡</span>
+            <span>Digital Circuits Suite</span>
+            <span class="brand-badge">Tool 3</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="../index.html" class="nav-link">🏠 Home</a></li>
+            <li><a href="../Web1/index.html" class="nav-link">⚡ Boolean Solver</a></li>
+            <li><a href="../Web2/index.html" class="nav-link">🔧 Circuits Sim</a></li>
+            <li><a href="index.html" class="nav-link active">🔢 7-Segment Display</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
+                🔊 <span class="sound-label">Sound: ON</span>
+            </button>
+            <button type="button" class="nav-tool-btn theme-toggle-btn" aria-label="Toggle theme">
+                🌙 <span class="theme-label">Dark Mode</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- BREADCRUMB BAR -->
+<div class="breadcrumb-bar">
+    <a href="../index.html">Home</a>
+    <span>/</span>
+    <span id="breadcrumbCurrent">7-Segment Display Simulator</span>
+</div>
 
 <header class="site-header">
     <div class="header-content">
         <h1>7-Segment Display Simulator</h1>
-        <p>Interactive Display • BCD Input • Truth Tables • Karnaugh Maps</p>
+        <p>BCD (0–9) & Hexadecimal (0–F) • Common Cathode / Anode • Live Decoder Schematics</p>
     </div>
 </header>
 
@@ -23,134 +57,198 @@
         <div class="section-heading">
             <span class="section-number">1</span>
             <div>
-                <h2>Choose a Mode</h2>
+                <h2>Choose a Simulator Mode</h2>
                 <p>Select how you want to interact with the 7-segment display.</p>
             </div>
         </div>
-        <div class="category-grid category-grid-2">
+        <div class="category-grid">
             <button class="category-btn" data-category="interactive">
                 <span class="category-icon" aria-hidden="true">🔢</span>
-                <span class="category-title">Interactive Mode</span>
-                <span class="category-desc">Toggle segments or enter BCD values live</span>
+                <span class="category-title">Interactive Input Mode</span>
+                <span class="category-desc">Toggle 4-bit binary inputs, press keys 0-F on your keyboard, or click segments directly for reverse glyph decoding</span>
             </button>
             <button class="category-btn" data-category="counter">
                 <span class="category-icon" aria-hidden="true">⏱️</span>
-                <span class="category-title">Counter Mode</span>
-                <span class="category-desc">Animated 0–9 counter with circuit diagram</span>
+                <span class="category-title">Automated Counter Mode</span>
+                <span class="category-desc">Decade (0–9) or Hex (0–F) clock counter with adjustable frequency, single-step pulses, and wave analyzer</span>
             </button>
         </div>
     </section>
 
-    <!-- STEP 3: Workspace (hidden until mode selected) -->
+    <!-- STEP 3: Workspace -->
     <section id="step3" class="hidden">
 
         <div class="workspace-header">
             <button id="backToStep2" class="back-link" type="button">← Back to Modes</button>
-            <h2 id="circuitTitle">7-Segment Display</h2>
+            <h2 id="circuitTitle">7-Segment Display Workspace</h2>
         </div>
 
-        <!-- Interactive Display -->
+        <!-- Configuration Bar -->
+        <div class="config-toolbar">
+            <div class="config-group">
+                <span class="config-label">Encoding:</span>
+                <div class="pill-select">
+                    <button type="button" class="pill-opt active" id="encBcdBtn">BCD (0–9)</button>
+                    <button type="button" class="pill-opt" id="encHexBtn">Hex (0–F)</button>
+                </div>
+            </div>
+            <div class="config-group">
+                <span class="config-label">Polarity:</span>
+                <div class="pill-select">
+                    <button type="button" class="pill-opt active" id="polCathodeBtn">Common Cathode (Active High)</button>
+                    <button type="button" class="pill-opt" id="polAnodeBtn">Common Anode (Active Low)</button>
+                </div>
+            </div>
+            <div class="config-group">
+                <span class="config-label">LED Color:</span>
+                <div class="color-picker-group">
+                    <button type="button" class="color-swatch active" style="background:#ff3344;" data-led="led-red" title="Ruby Red"></button>
+                    <button type="button" class="color-swatch" style="background:#10b981;" data-led="led-green" title="Emerald Green"></button>
+                    <button type="button" class="color-swatch" style="background:#00f0ff;" data-led="led-cyan" title="Cyber Cyan"></button>
+                    <button type="button" class="color-swatch" style="background:#f59e0b;" data-led="led-amber" title="Neon Amber"></button>
+                    <button type="button" class="color-swatch" style="background:#a855f7;" data-led="led-purple" title="UV Purple"></button>
+                    <button type="button" class="color-swatch" style="background:#f8fafc;" data-led="led-white" title="Cold White"></button>
+                </div>
+            </div>
+        </div>
+
+        <!-- Interactive 7-Segment Display -->
         <section id="displaySection" class="card">
             <div class="section-heading">
                 <span class="section-number">A</span>
                 <div>
-                    <h2>7-Segment Display</h2>
-                    <p id="displayHint">Click segments or use BCD input below to control the display.</p>
+                    <h2>LED 7-Segment Display</h2>
+                    <p id="displayHint">Click individual segments or toggle inputs below to control the display.</p>
                 </div>
             </div>
-            <div id="segmentDisplay" class="display-container"></div>
+            <div class="display-outer-box">
+                <div class="display-housing">
+                    <div id="segmentDisplay"></div>
+                </div>
+                <div id="reverseMatchBanner" class="reverse-match-badge">
+                    <span>Decoded Pattern:</span>
+                    <span id="reverseMatchText" class="reverse-match-highlight">Digit '0' (0000)</span>
+                </div>
+            </div>
         </section>
 
-        <!-- BCD Input Panel -->
+        <!-- Binary Input Panel -->
         <section id="inputSection" class="card">
             <div class="section-heading">
                 <span class="section-number">B</span>
                 <div>
-                    <h2>BCD Input</h2>
-                    <p>Set the 4-bit BCD input: A (MSB=8), B (4), C (2), D (LSB=1).</p>
+                    <h2>Binary Inputs (A, B, C, D)</h2>
+                    <p>Set 4-bit binary vector: A (MSB=8), B (4), C (2), D (LSB=1). <em>Tip: You can also type 0-9 / A-F on your keyboard directly!</em></p>
                 </div>
             </div>
             <div id="bcdInput" class="input-panel"></div>
-            <p id="liveHint" class="live-hint">Toggle any bit above — the display updates instantly.</p>
+            <p id="liveHint" class="live-hint">💡 Toggle any bit above — segments, waveforms and truth tables update instantaneously.</p>
         </section>
 
-        <!-- Counter Controls -->
+        <!-- Counter Controls (Counter Mode Only) -->
         <section id="counterSection" class="card hidden">
             <div class="section-heading">
                 <span class="section-number">C</span>
                 <div>
-                    <h2>Counter Controls</h2>
-                    <p>Start, stop, and adjust the counter speed.</p>
+                    <h2>Clock Pulse & Counter Controls</h2>
+                    <p>Automate count sequence, step single clock ticks, and adjust speed.</p>
                 </div>
             </div>
             <div class="counter-controls">
-                <button id="counterStart" class="counter-btn" type="button">▶ Start</button>
-                <button id="counterStop" class="counter-btn" type="button" disabled>⏸ Stop</button>
+                <button id="counterStart" class="counter-btn btn-primary" type="button">▶ Start Clock</button>
+                <button id="counterStop" class="counter-btn" type="button" disabled>⏸ Pause</button>
                 <button id="counterReset" class="counter-btn" type="button">↺ Reset</button>
+                <button id="counterStepFwd" class="counter-btn" type="button">⏱ Step +1</button>
+                <button id="counterStepBack" class="counter-btn" type="button">⏱ Step −1</button>
                 <div class="speed-control">
                     <label for="counterSpeed">Speed:</label>
                     <input id="counterSpeed" type="range" min="200" max="2000" value="800" step="100">
-                    <span id="speedLabel">800ms</span>
+                    <span id="speedLabel">800ms (1.25 Hz)</span>
                 </div>
+            </div>
+        </section>
+
+        <!-- Real-Time Segment Waveform Timing Diagram -->
+        <section class="card waveform-card">
+            <div class="section-heading">
+                <span class="section-number">C</span>
+                <div>
+                    <h2>Digital Logic Analyzer (Segments a–g Waves)</h2>
+                    <p>Real-time digital timing diagram showing activation square waves for segments a through g.</p>
+                </div>
+            </div>
+            <div class="waveform-canvas-container">
+                <canvas id="segTimingCanvas" width="900" height="180"></canvas>
             </div>
         </section>
 
         <!-- Truth Table -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number" id="ttSectionNum">C</span>
+                <span class="section-number" id="ttSectionNum">D</span>
                 <div>
-                    <h2>Truth Table</h2>
-                    <p>Segment activation for every BCD input (0–9).</p>
+                    <h2>Decoder Truth Table</h2>
+                    <p>Complete segment activation table (a–g) with active input state highlighted.</p>
                 </div>
             </div>
             <div id="truthTable" class="result-table-container"></div>
         </section>
 
-        <!-- Boolean Expressions -->
+        <!-- Boolean Expressions & Verilog -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number" id="exprSectionNum">D</span>
+                <span class="section-number" id="exprSectionNum">E</span>
                 <div>
-                    <h2>Boolean Expressions</h2>
-                    <p>Simplified SOP expressions for each segment (a–g).</p>
+                    <h2>Boolean Expressions & Verilog Module</h2>
+                    <p>Minimized SOP expressions for segments a through g.</p>
                 </div>
             </div>
             <div id="booleanExpressions" class="expressions-container"></div>
+            <div style="margin-top: 20px;">
+                <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:8px;">
+                    <h3 style="font-size:15px; font-weight:750; color:var(--text-primary);">💻 Synthesizable Verilog Decoder Module</h3>
+                    <button type="button" id="copyVerilogBtn" class="copy-btn">📋 Copy Verilog</button>
+                </div>
+                <pre id="verilogBox" class="verilog-box"></pre>
+            </div>
         </section>
 
         <!-- Karnaugh Maps -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number" id="kmapSectionNum">E</span>
+                <span class="section-number" id="kmapSectionNum">F</span>
                 <div>
-                    <h2>Karnaugh Maps</h2>
-                    <p>Visual minimization for each segment output.</p>
+                    <h2>Karnaugh Maps for Segments (a–g)</h2>
+                    <p>4-variable K-maps visualizing prime implicant reduction for each segment.</p>
                 </div>
             </div>
             <div id="karnaughMaps" class="karnaugh-maps-container"></div>
         </section>
 
-        <!-- Circuit Diagram -->
+        <!-- Decoder Circuit Diagram -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number" id="circuitSectionNum">F</span>
+                <span class="section-number" id="circuitSectionNum">G</span>
                 <div>
-                    <h2>Circuit Diagram</h2>
-                    <p>BCD-to-7-Segment decoder logic circuit.</p>
+                    <h2>Decoder Logic Schematic</h2>
+                    <p>Decoder logic schematic with real-time active wire signal tracing.</p>
                 </div>
+            </div>
+            <div class="circuit-header-row">
+                <button type="button" class="tool-btn" id="zoomInBtn" title="Zoom In">🔍+</button>
+                <button type="button" class="tool-btn" id="zoomOutBtn" title="Zoom Out">🔍−</button>
+                <button type="button" class="tool-btn" id="zoomResetBtn" title="Reset Zoom">↺ Reset</button>
             </div>
             <div id="circuitDiagram" class="circuit-container"></div>
         </section>
 
     </section>
-
 </main>
 
 <footer class="site-footer">
     <h3>7-Segment Display Simulator</h3>
-    <p>Interactive displays, Karnaugh maps & circuit diagrams</p>
-    <p class="footer-small">BCD Decoder • Segment Truth Tables • Boolean Expressions</p>
+    <p>Digital Circuits Suite</p>
+    <p class="footer-small">BCD & Hex Decoding • Karnaugh Minimization • Live Decoder Logic</p>
 </footer>
 
 <script src="script.js"></script>

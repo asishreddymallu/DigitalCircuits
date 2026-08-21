@@ -1,13 +1,14 @@
-"use strict";
 /* =========================================================
-   7-SEGMENT DISPLAY SIMULATOR
-   Interactive Mode • Decade Counter Mode
-   Truth Tables • Karnaugh Maps • Boolean Expressions
-   Circuit Diagrams
+   7-SEGMENT DISPLAY SIMULATOR - COMPLETE STUDIO ENGINE
+   Interactive & Automated Counter Modes • BCD & Hex Modes
+   Common Cathode / Common Anode • Reverse Segment Decoding
+   LED Phosphor Customizer • Direct Keyboard Typing
+   Real-Time Digital Waveform Analyzer • Studio Sound FX
+   Truth Tables • K-Maps • Boolean Formulas • Verilog • Zoom
 ========================================================= */
 const SEGMENTS = ["a", "b", "c", "d", "e", "f", "g"];
-// BCD digits 0-9: which segments are ON (1 = on, 0 = off)
-const BCD_PATTERNS = {
+// 16 Hexadecimal patterns (0 to F)
+const HEX_PATTERNS = {
     0: { a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 0 },
     1: { a: 0, b: 1, c: 1, d: 0, e: 0, f: 0, g: 0 },
     2: { a: 1, b: 1, c: 0, d: 1, e: 1, f: 0, g: 1 },
@@ -17,10 +18,17 @@ const BCD_PATTERNS = {
     6: { a: 1, b: 0, c: 1, d: 1, e: 1, f: 1, g: 1 },
     7: { a: 1, b: 1, c: 1, d: 0, e: 0, f: 0, g: 0 },
     8: { a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 1 },
-    9: { a: 1, b: 1, c: 1, d: 1, e: 0, f: 1, g: 1 }
+    9: { a: 1, b: 1, c: 1, d: 1, e: 0, f: 1, g: 1 },
+    10: { a: 1, b: 1, c: 1, d: 0, e: 1, f: 1, g: 1 }, // A
+    11: { a: 0, b: 0, c: 1, d: 1, e: 1, f: 1, g: 1 }, // b
+    12: { a: 1, b: 0, c: 0, d: 1, e: 1, f: 1, g: 0 }, // C
+    13: { a: 0, b: 1, c: 1, d: 1, e: 1, f: 0, g: 1 }, // d
+    14: { a: 1, b: 0, c: 0, d: 1, e: 1, f: 1, g: 1 }, // E
+    15: { a: 1, b: 0, c: 0, d: 0, e: 1, f: 1, g: 1 } // F
 };
-// Minterms for each segment (BCD only — 0-9)
-const SEGMENT_MINTERMS = {
+const HEX_CHARS = ["0", "1", "2", "3", "4", "5", "6", "7", "8", "9", "A", "b", "C", "d", "E", "F"];
+// BCD Minterms (0-9)
+const BCD_MINTERMS = {
     a: [0, 2, 3, 5, 6, 7, 8, 9],
     b: [0, 1, 2, 3, 4, 7, 8, 9],
     c: [0, 1, 3, 4, 5, 6, 7, 8, 9],
@@ -29,16 +37,25 @@ const SEGMENT_MINTERMS = {
     f: [0, 4, 5, 6, 8, 9],
     g: [2, 3, 4, 5, 6, 8, 9]
 };
-// Simplified SOP expressions (from PDF Karnaugh map reduction)
-// Variable order: A (MSB=8), B (4), C (2), D (LSB=1)
-const SEGMENT_EXPRESSIONS = {
-    a: "A + C + BD + B'D'",
-    b: "B' + CD + C'D'",
+// Simplified SOP expressions for BCD
+const BCD_EXPRESSIONS = {
+    a: "A + C + B·D + B'·D'",
+    b: "B' + C·D + C'·D'",
     c: "B + C' + D",
-    d: "A + CD' + B'D' + B'C + BC'D",
-    e: "B'D' + CD'",
-    f: "A + BD' + C'D' + BC'",
-    g: "A + B'C + CD' + BC'"
+    d: "A + C·D' + B'·D' + B'·C + B·C'·D",
+    e: "B'·D' + C·D'",
+    f: "A + B·D' + C'·D' + B·C'",
+    g: "A + B'·C + C·D' + B·C'"
+};
+// Simplified SOP expressions for Full Hexadecimal (0–F)
+const HEX_EXPRESSIONS = {
+    a: "A + C + B·D + B'·D'",
+    b: "B' + C'·D' + C·D",
+    c: "B + C' + D",
+    d: "B'·D' + C·D' + B'·C + B·C'·D + A",
+    e: "B'·D' + C·D'",
+    f: "A + C'·D' + B·C' + B·D'",
+    g: "A + B·C' + B'·C + C·D'"
 };
 /* =========================================================
    DOM ELEMENTS
@@ -46,38 +63,124 @@ const SEGMENT_EXPRESSIONS = {
 const step1 = document.getElementById("step1");
 const step3 = document.getElementById("step3");
 const backToStep2 = document.getElementById("backToStep2");
+const breadcrumbCurrent = document.getElementById("breadcrumbCurrent");
+const encBcdBtn = document.getElementById("encBcdBtn");
+const encHexBtn = document.getElementById("encHexBtn");
+const polCathodeBtn = document.getElementById("polCathodeBtn");
+const polAnodeBtn = document.getElementById("polAnodeBtn");
 const segmentDisplay = document.getElementById("segmentDisplay");
+const reverseMatchText = document.getElementById("reverseMatchText");
 const bcdInput = document.getElementById("bcdInput");
 const truthTable = document.getElementById("truthTable");
 const booleanExpressions = document.getElementById("booleanExpressions");
 const karnaughMaps = document.getElementById("karnaughMaps");
 const circuitDiagram = document.getElementById("circuitDiagram");
-const circuitTitle = document.getElementById("circuitTitle");
+const verilogBox = document.getElementById("verilogBox");
+const copyVerilogBtn = document.getElementById("copyVerilogBtn");
+const segTimingCanvas = document.getElementById("segTimingCanvas");
 const displayHint = document.getElementById("displayHint");
-const liveHint = document.getElementById("liveHint");
-const displaySection = document.getElementById("displaySection");
-const inputSection = document.getElementById("inputSection");
 const counterSection = document.getElementById("counterSection");
 const counterStart = document.getElementById("counterStart");
 const counterStop = document.getElementById("counterStop");
 const counterReset = document.getElementById("counterReset");
+const counterStepFwd = document.getElementById("counterStepFwd");
+const counterStepBack = document.getElementById("counterStepBack");
 const counterSpeed = document.getElementById("counterSpeed");
 const speedLabel = document.getElementById("speedLabel");
+const zoomInBtn = document.getElementById("zoomInBtn");
+const zoomOutBtn = document.getElementById("zoomOutBtn");
+const zoomResetBtn = document.getElementById("zoomResetBtn");
 /* =========================================================
    STATE
 ========================================================= */
-let selectedCategory = null;
+let currentMode = "interactive";
+let isHexMode = false;
+let isCommonAnode = false; // false = Common Cathode (active high), true = Common Anode (active low)
 let currentInput = 0;
 let counterInterval = null;
-let segmentValues = { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0, g: 0 };
+let segmentValues = { a: 1, b: 1, c: 1, d: 1, e: 1, f: 1, g: 0 };
+let zoomScale = 1.0;
+let panX = 0;
+let panY = 0;
+let isDragging = false;
+let startDragX = 0;
+let startDragY = 0;
+let segWaveHistory = [];
+let segWaveTimer = 0;
 /* =========================================================
-   SVG 7-SEGMENT DISPLAY RENDERER
+   7-SEGMENT DIGITAL LOGIC ANALYZER (TIMING DIAGRAM)
 ========================================================= */
-function render7Segment(pattern, size = 200) {
+function recordSegmentWave() {
+    segWaveTimer++;
+    segWaveHistory.push({ time: segWaveTimer, segs: { ...segmentValues } });
+    if (segWaveHistory.length > 25) {
+        segWaveHistory.shift();
+    }
+    drawSegTimingDiagram();
+}
+function drawSegTimingDiagram() {
+    if (!segTimingCanvas || segWaveHistory.length === 0)
+        return;
+    const ctx = segTimingCanvas.getContext("2d");
+    if (!ctx)
+        return;
+    const w = segTimingCanvas.width;
+    const h = segTimingCanvas.height;
+    ctx.clearRect(0, 0, w, h);
+    const rowHeight = Math.floor((h - 20) / 7);
+    const startX = 90;
+    const graphWidth = w - startX - 30;
+    const stepX = graphWidth / Math.max(15, segWaveHistory.length - 1);
+    // Draw background grid lines
+    ctx.strokeStyle = "rgba(255,255,255,0.06)";
+    ctx.lineWidth = 1;
+    for (let x = startX; x < w - 20; x += 40) {
+        ctx.beginPath();
+        ctx.moveTo(x, 10);
+        ctx.lineTo(x, h - 10);
+        ctx.stroke();
+    }
+    SEGMENTS.forEach((sId, sIdx) => {
+        const topY = 12 + sIdx * rowHeight;
+        const lowY = topY + rowHeight - 6;
+        const highY = topY + 4;
+        // Label
+        ctx.font = "bold 12px 'JetBrains Mono', Consolas, monospace";
+        ctx.fillStyle = "#38bdf8";
+        ctx.textAlign = "right";
+        ctx.fillText(`seg ${sId}`, startX - 10, lowY - 2);
+        // Waveform
+        ctx.strokeStyle = "#38bdf8";
+        ctx.lineWidth = 2.2;
+        ctx.beginPath();
+        segWaveHistory.forEach((pt, i) => {
+            const x = startX + i * stepX;
+            const isLit = isCommonAnode ? pt.segs[sId] === 0 : pt.segs[sId] === 1;
+            const y = isLit ? highY : lowY;
+            if (i === 0) {
+                ctx.moveTo(x, y);
+            }
+            else {
+                const prevLit = isCommonAnode
+                    ? segWaveHistory[i - 1].segs[sId] === 0
+                    : segWaveHistory[i - 1].segs[sId] === 1;
+                const prevY = prevLit ? highY : lowY;
+                if (prevY !== y) {
+                    ctx.lineTo(x, prevY);
+                }
+                ctx.lineTo(x, y);
+            }
+        });
+        ctx.stroke();
+    });
+}
+/* =========================================================
+   7-SEGMENT DISPLAY SVG RENDERER
+========================================================= */
+function render7Segment(pattern, size = 180) {
     const w = size;
-    const h = size * 1.8;
-    const segLen = w * 0.55;
-    const segThick = w * 0.08;
+    const h = size * 1.7;
+    const segLen = w * 0.58;
     const gap = w * 0.06;
     const cx = w / 2;
     const topY = h * 0.08;
@@ -94,414 +197,588 @@ function render7Segment(pattern, size = 200) {
         { id: "f", path: `M ${leftX} ${topY + gap * 2} L ${leftX} ${midY - gap}`, labelX: leftX - 16, labelY: (topY + midY) / 2 },
         { id: "g", path: `M ${leftX + gap} ${midY} L ${rightX - gap} ${midY}`, labelX: cx, labelY: midY - 10 }
     ];
-    let svg = `<svg class="seven-seg-svg" xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="0 0 ${w} ${h}">`;
-    svg += `<rect x="${leftX - 12}" y="${topY - 14}" width="${segLen + 24}" height="${botY - topY + 28}" rx="10" fill="#1a1a2e" stroke="#2d2d44" stroke-width="2"/>`;
+    let svg = `<svg class="seg-svg" xmlns="http://www.w3.org/2000/svg" width="${w}" height="${h}" viewBox="-25 -20 ${w + 50} ${h + 40}">`;
     segDefs.forEach(seg => {
-        const isOn = pattern[seg.id] === 1;
-        const cls = isOn ? "seg-on" : "seg-off";
-        svg += `<path d="${seg.path}" class="${cls}" stroke="${isOn ? '#ef4444' : '#52525b'}" stroke-width="${segThick}" stroke-linecap="round"/>`;
-        svg += `<text x="${seg.labelX}" y="${seg.labelY}" class="seg-label" text-anchor="middle" dominant-baseline="middle" font-size="${size * 0.08}">${seg.id}</text>`;
+        const isLit = isCommonAnode ? pattern[seg.id] === 0 : pattern[seg.id] === 1;
+        const cls = isLit ? "segment-path seg-on" : "segment-path seg-off";
+        svg += `
+            <g class="segment-group" data-seg="${seg.id}">
+                <path d="${seg.path}" class="${cls}" stroke-width="14" stroke-linecap="round" fill="none" />
+                <text x="${seg.labelX}" y="${seg.labelY + 4}" text-anchor="middle" font-size="12" font-weight="750" fill="var(--text-muted)">${seg.id}</text>
+            </g>
+        `;
     });
+    // Decimal point (DP)
+    svg += `<circle cx="${rightX + 18}" cy="${botY}" r="7" class="segment-path seg-off" stroke-width="0" fill="var(--seg-off)" />`;
     svg += `</svg>`;
     return svg;
 }
+function findMatchingPattern(pat) {
+    for (let i = 0; i < (isHexMode ? 16 : 10); i++) {
+        const hexP = HEX_PATTERNS[i];
+        let match = true;
+        for (const seg of SEGMENTS) {
+            const expected = isCommonAnode ? 1 - hexP[seg] : hexP[seg];
+            if (pat[seg] !== expected) {
+                match = false;
+                break;
+            }
+        }
+        if (match) {
+            const bin = i.toString(2).padStart(4, "0");
+            return `Digit '${HEX_CHARS[i]}' (${bin}) — Hex 0x${i.toString(16).toUpperCase()}`;
+        }
+    }
+    const litSegs = SEGMENTS.filter(s => isCommonAnode ? pat[s] === 0 : pat[s] === 1).join(", ");
+    return `Custom Glyph {${litSegs || "none"}}`;
+}
 /* =========================================================
-   TRUTH TABLE BUILDER
+   INPUT CONTROLS & DIRECT KEYBOARD TYPING
+========================================================= */
+function buildInputs() {
+    const bits = [
+        { name: "A", weight: 8 },
+        { name: "B", weight: 4 },
+        { name: "C", weight: 2 },
+        { name: "D", weight: 1 }
+    ];
+    bcdInput.innerHTML = bits.map(b => {
+        const val = (currentInput & b.weight) ? 1 : 0;
+        return `
+            <button type="button" class="input-toggle-btn ${val ? "active" : ""}" data-weight="${b.weight}">
+                <span>${b.name} (${b.weight})</span>
+                <span class="input-val-badge">${val}</span>
+            </button>
+        `;
+    }).join("");
+    bcdInput.querySelectorAll(".input-toggle-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const w = Number(btn.getAttribute("data-weight"));
+            if (currentInput & w)
+                currentInput &= ~w;
+            else
+                currentInput |= w;
+            const maxLimit = isHexMode ? 15 : 9;
+            if (currentInput > maxLimit)
+                currentInput = maxLimit;
+            if (window.StudioFX)
+                window.StudioFX.click(true);
+            syncDisplayFromInput();
+        });
+    });
+}
+function syncDisplayFromInput() {
+    const pat = HEX_PATTERNS[currentInput] || HEX_PATTERNS[0];
+    SEGMENTS.forEach(s => {
+        segmentValues[s] = isCommonAnode ? (1 - pat[s]) : pat[s];
+    });
+    updateAllViews();
+}
+function updateAllViews() {
+    segmentDisplay.innerHTML = render7Segment(segmentValues);
+    segmentDisplay.querySelectorAll(".segment-group").forEach(grp => {
+        grp.addEventListener("click", () => {
+            if (currentMode !== "interactive")
+                return;
+            const seg = grp.getAttribute("data-seg");
+            if (seg) {
+                segmentValues[seg] = segmentValues[seg] === 1 ? 0 : 1;
+                if (window.StudioFX)
+                    window.StudioFX.click(segmentValues[seg] === 1);
+                reverseDecodeCustomDisplay();
+            }
+        });
+    });
+    reverseMatchText.textContent = findMatchingPattern(segmentValues);
+    bcdInput.querySelectorAll(".input-toggle-btn").forEach(btn => {
+        const w = Number(btn.getAttribute("data-weight"));
+        const isHigh = (currentInput & w) !== 0;
+        btn.classList.toggle("active", isHigh);
+        const badge = btn.querySelector(".input-val-badge");
+        if (badge)
+            badge.textContent = isHigh ? "1" : "0";
+    });
+    truthTable.querySelectorAll("tbody tr").forEach(tr => {
+        const rowVal = Number(tr.getAttribute("data-val"));
+        tr.classList.toggle("active-row", rowVal === currentInput);
+    });
+    renderCircuitDiagram();
+    recordSegmentWave();
+}
+function reverseDecodeCustomDisplay() {
+    segmentDisplay.innerHTML = render7Segment(segmentValues);
+    segmentDisplay.querySelectorAll(".segment-group").forEach(grp => {
+        grp.addEventListener("click", () => {
+            const seg = grp.getAttribute("data-seg");
+            if (seg) {
+                segmentValues[seg] = segmentValues[seg] === 1 ? 0 : 1;
+                if (window.StudioFX)
+                    window.StudioFX.click(segmentValues[seg] === 1);
+                reverseDecodeCustomDisplay();
+            }
+        });
+    });
+    reverseMatchText.textContent = findMatchingPattern(segmentValues);
+    recordSegmentWave();
+}
+// Direct Keyboard Typing Support (0-9, A-F)
+window.addEventListener("keydown", (e) => {
+    if (e.target instanceof HTMLInputElement || e.target instanceof HTMLTextAreaElement)
+        return;
+    const key = e.key.toUpperCase();
+    const hexIdx = HEX_CHARS.indexOf(key);
+    if (hexIdx !== -1) {
+        if (!isHexMode && hexIdx > 9)
+            return;
+        currentInput = hexIdx;
+        if (window.StudioFX)
+            window.StudioFX.relay();
+        syncDisplayFromInput();
+    }
+});
+/* =========================================================
+   TRUTH TABLE
 ========================================================= */
 function buildTruthTable() {
-    let html = "<table><thead><tr>";
-    html += "<th>Digit</th><th>A (8)</th><th>B (4)</th><th>C (2)</th><th>D (1)</th>";
-    SEGMENTS.forEach(s => { html += `<th>${s.toUpperCase()}</th>`; });
-    html += "</tr></thead><tbody>";
-    for (let i = 0; i <= 9; i++) {
+    const totalRows = isHexMode ? 16 : 10;
+    let html = `<table class="truth-table"><thead><tr>`;
+    html += `<th>Digit</th><th>A (8)</th><th>B (4)</th><th>C (2)</th><th>D (1)</th>`;
+    SEGMENTS.forEach(s => { html += `<th>${s}</th>`; });
+    html += `</tr></thead><tbody>`;
+    for (let i = 0; i < totalRows; i++) {
+        const p = HEX_PATTERNS[i];
         const a = (i >> 3) & 1, b = (i >> 2) & 1, c = (i >> 1) & 1, d = i & 1;
-        const pattern = BCD_PATTERNS[i];
-        const highlight = i === currentInput ? " highlighted" : "";
-        html += `<tr class="${highlight}">`;
-        html += `<td class="decimal-col">${i}</td>`;
+        html += `<tr data-val="${i}">`;
+        html += `<td><strong>${HEX_CHARS[i]}</strong></td>`;
         html += `<td>${a}</td><td>${b}</td><td>${c}</td><td>${d}</td>`;
         SEGMENTS.forEach(s => {
-            const cls = pattern[s] === 1 ? "seg-on-cell" : "seg-off-cell";
-            html += `<td class="${cls}">${pattern[s]}</td>`;
+            const val = isCommonAnode ? (1 - p[s]) : p[s];
+            const isLit = isCommonAnode ? val === 0 : val === 1;
+            const cls = isLit ? "tt-one" : "tt-zero";
+            html += `<td class="${cls}">${val}</td>`;
         });
-        html += "</tr>";
-    }
-    // Don't-care rows 10-15
-    for (let i = 10; i <= 15; i++) {
-        const a = (i >> 3) & 1, b = (i >> 2) & 1, c = (i >> 1) & 1, d = i & 1;
-        html += `<tr class="dont-care-row">`;
-        html += `<td class="decimal-col">—</td>`;
-        html += `<td>${a}</td><td>${b}</td><td>${c}</td><td>${d}</td>`;
-        SEGMENTS.forEach(s => {
-            html += `<td class="dont-care-cell">X</td>`;
-        });
-        html += "</tr>";
-    }
-    html += "</tbody></table>";
-    return html;
-}
-/* =========================================================
-   BOOLEAN EXPRESSIONS DISPLAY
-========================================================= */
-function showExpressions() {
-    booleanExpressions.innerHTML = "";
-    SEGMENTS.forEach(seg => {
-        const row = document.createElement("div");
-        row.className = "expression-row";
-        row.innerHTML = `
-            <span class="expression-label">${seg.toUpperCase()}</span>
-            <div class="expression-box">${SEGMENT_EXPRESSIONS[seg]}</div>
-        `;
-        booleanExpressions.appendChild(row);
-    });
-}
-/* =========================================================
-   KARNAUGH MAP RENDERER (4-variable: AB rows, CD columns)
-========================================================= */
-const GRAY2 = [[0, 0], [0, 1], [1, 1], [1, 0]];
-const TRUTH_VALUES = {
-    a: [[1, 0, 1, 1], [0, 1, 1, 1], [-1, -1, -1, -1], [1, 1, -1, -1]],
-    b: [[1, 1, 1, 1], [1, 0, 1, 0], [-1, -1, -1, -1], [1, 1, -1, -1]],
-    c: [[1, 1, 1, 0], [1, 1, 1, 1], [-1, -1, -1, -1], [1, 1, -1, -1]],
-    d: [[1, 0, 1, 1], [0, 1, 0, 1], [-1, -1, -1, -1], [1, 1, -1, -1]],
-    e: [[1, 0, 0, 1], [0, 0, 0, 1], [-1, -1, -1, -1], [1, 0, -1, -1]],
-    f: [[1, 0, 0, 0], [1, 1, 0, 1], [-1, -1, -1, -1], [1, 1, -1, -1]],
-    g: [[0, 0, 1, 1], [1, 1, 0, 1], [-1, -1, -1, -1], [1, 1, -1, -1]]
-};
-function buildKarnaughMap(seg) {
-    const grid = TRUTH_VALUES[seg];
-    let html = `<div class="kmap-card">`;
-    html += `<div class="kmap-title">Segment ${seg.toUpperCase()}</div>`;
-    html += `<table class="karnaugh-map">`;
-    html += `<tr><th class="km-corner">AB \\ CD</th>`;
-    GRAY2.forEach(cd => { html += `<th>${cd[0]}${cd[1]}</th>`; });
-    html += `</tr>`;
-    for (let r = 0; r < 4; r++) {
-        const ab = GRAY2[r];
-        html += `<tr><th class="km-corner">${ab[0]}${ab[1]}</th>`;
-        for (let c = 0; c < 4; c++) {
-            const val = grid[r][c];
-            const abVal = (ab[0] << 1) | ab[1];
-            const cdVal = (GRAY2[c][0] << 1) | GRAY2[c][1];
-            const minterm = (abVal << 2) | cdVal;
-            let cls = "";
-            let display = "";
-            if (val === 1) {
-                cls = "km-one";
-                display = "1";
-            }
-            else if (val === 0) {
-                cls = "km-zero";
-                display = "0";
-            }
-            else {
-                cls = "km-dontcare";
-                display = "X";
-            }
-            html += `<td class="${cls}"><span class="km-minterm">${minterm}</span><span class="km-value">${display}</span></td>`;
-        }
         html += `</tr>`;
     }
-    html += `</table>`;
-    html += `<div class="kmap-expr">${seg} = ${SEGMENT_EXPRESSIONS[seg]}</div>`;
-    html += `</div>`;
-    return html;
-}
-function showKarnaughMaps() {
-    karnaughMaps.innerHTML = "";
-    SEGMENTS.forEach(seg => {
-        karnaughMaps.innerHTML += buildKarnaughMap(seg);
-    });
+    html += `</tbody></table>`;
+    truthTable.innerHTML = html;
 }
 /* =========================================================
-   CIRCUIT DIAGRAM — Clean Schematic Style
+   BOOLEAN FORMULAS & VERILOG
 ========================================================= */
-function svgAND(cx, cy, w, h) {
-    const hw = w / 2, hh = h / 2;
-    return `<path d="M ${cx - hw} ${cy - hh} h ${hw} a ${hh} ${hh} 0 0 1 0 ${h} h ${-hw} z" fill="white" stroke="#1a2744" stroke-width="2" stroke-linejoin="round"/>`;
+function buildExpressions() {
+    const expressions = isHexMode ? HEX_EXPRESSIONS : BCD_EXPRESSIONS;
+    booleanExpressions.innerHTML = SEGMENTS.map(s => `
+        <div class="expression-card">
+            <h3>Segment ${s.toUpperCase()}</h3>
+            <div class="expression-formula">${s} = ${expressions[s]}</div>
+        </div>
+    `).join("");
+    const code = generateVerilogModule();
+    verilogBox.textContent = code;
+    copyVerilogBtn.onclick = () => {
+        if (window.StudioFX)
+            window.StudioFX.click(true);
+        navigator.clipboard.writeText(code).then(() => {
+            copyVerilogBtn.textContent = "✅ Copied!";
+            copyVerilogBtn.classList.add("copied");
+            setTimeout(() => {
+                copyVerilogBtn.textContent = "📋 Copy Verilog";
+                copyVerilogBtn.classList.remove("copied");
+            }, 1600);
+        });
+    };
 }
-function svgNOT(cx, cy, h) {
-    const hh = h / 2;
-    return `<polygon points="${cx - hh},${cy - hh} ${cx + hh},${cy} ${cx - hh},${cy + hh}" fill="white" stroke="#1a2744" stroke-width="2" stroke-linejoin="round"/>
-            <circle cx="${cx + hh + 4}" cy="${cy}" r="4" fill="white" stroke="#1a2744" stroke-width="1.8"/>`;
+function generateVerilogModule() {
+    const modName = isHexMode ? "hex_to_7seg_decoder" : "bcd_to_7seg_decoder";
+    return `// Synthesizable 7-Segment Decoder (${isHexMode ? "Hex 0-F" : "BCD 0-9"}, ${isCommonAnode ? "Common Anode" : "Common Cathode"})
+module ${modName} (
+    input  wire [3:0] in,
+    output reg  [6:0] seg // {a, b, c, d, e, f, g}
+);
+    always @(*) begin
+        case (in)
+            4'h0: seg = 7'b${isCommonAnode ? "0000001" : "1111110"}; // 0
+            4'h1: seg = 7'b${isCommonAnode ? "1001111" : "0110000"}; // 1
+            4'h2: seg = 7'b${isCommonAnode ? "0010010" : "1101101"}; // 2
+            4'h3: seg = 7'b${isCommonAnode ? "0000110" : "1111001"}; // 3
+            4'h4: seg = 7'b${isCommonAnode ? "1001100" : "0110011"}; // 4
+            4'h5: seg = 7'b${isCommonAnode ? "0100100" : "1011011"}; // 5
+            4'h6: seg = 7'b${isCommonAnode ? "0100000" : "1011111"}; // 6
+            4'h7: seg = 7'b${isCommonAnode ? "0001111" : "1110000"}; // 7
+            4'h8: seg = 7'b${isCommonAnode ? "0000000" : "1111111"}; // 8
+            4'h9: seg = 7'b${isCommonAnode ? "0000100" : "1111011"}; // 9
+            ${isHexMode ? `
+            4'hA: seg = 7'b${isCommonAnode ? "0001000" : "1110111"}; // A
+            4'hB: seg = 7'b${isCommonAnode ? "1100000" : "0011111"}; // b
+            4'hC: seg = 7'b${isCommonAnode ? "0110001" : "1001110"}; // C
+            4'hD: seg = 7'b${isCommonAnode ? "1000010" : "0111101"}; // d
+            4'hE: seg = 7'b${isCommonAnode ? "0110000" : "1001111"}; // E
+            4'hF: seg = 7'b${isCommonAnode ? "0111000" : "1000111"}; // F` : ""}
+            default: seg = 7'b${isCommonAnode ? "1111111" : "0000000"};
+        endcase
+    end
+endmodule`;
 }
-function svgWire(x1, y1, x2, y2) {
-    return `<line x1="${x1}" y1="${y1}" x2="${x2}" y2="${y2}" stroke="#2563eb" stroke-width="2" stroke-linecap="round"/>`;
+/* =========================================================
+   KARNAUGH MAPS
+========================================================= */
+function buildKarnaughMaps() {
+    const rowLabels = ["00", "01", "11", "10"];
+    const colLabels = ["00", "01", "11", "10"];
+    const grid = [
+        [0, 1, 3, 2],
+        [4, 5, 7, 6],
+        [12, 13, 15, 14],
+        [8, 9, 11, 10]
+    ];
+    karnaughMaps.innerHTML = SEGMENTS.map(s => {
+        const minterms = isHexMode
+            ? Array.from({ length: 16 }, (_, i) => i).filter(i => HEX_PATTERNS[i][s] === 1)
+            : BCD_MINTERMS[s];
+        let table = `<table class="karnaugh-map"><thead><tr><th>AB\\CD</th>`;
+        colLabels.forEach(c => { table += `<th>${c}</th>`; });
+        table += `</tr></thead><tbody>`;
+        for (let r = 0; r < 4; r++) {
+            table += `<tr><th>${rowLabels[r]}</th>`;
+            for (let c = 0; c < 4; c++) {
+                const m = grid[r][c];
+                let cellCls = "km-zero";
+                let cellVal = "0";
+                if (!isHexMode && m >= 10) {
+                    cellCls = "km-dontcare";
+                    cellVal = "X";
+                }
+                else if (minterms.includes(m)) {
+                    cellCls = "km-one";
+                    cellVal = "1";
+                }
+                table += `<td class="${cellCls}">
+                    <span class="km-minterm">m${m}</span>
+                    <span class="km-value">${cellVal}</span>
+                </td>`;
+            }
+            table += `</tr>`;
+        }
+        table += `</tbody></table>`;
+        return `
+            <div class="kmap-card">
+                <h3>Segment ${s.toUpperCase()}</h3>
+                ${table}
+            </div>
+        `;
+    }).join("");
 }
-function svgJunction(x, y) {
-    return `<circle cx="${x}" cy="${y}" r="3" fill="#2563eb" stroke="#1e40af" stroke-width="0.6"/>`;
+/* =========================================================
+   DECODER SCHEMATIC DIAGRAM WITH LIVE WIRE SIGNALS & WIRE JUMPS
+========================================================= */
+function wireHopH(x1, x2, y, crossXs, isHigh) {
+    const minX = Math.min(x1, x2);
+    const maxX = Math.max(x1, x2);
+    const isLtoR = x1 <= x2;
+    const cls = isHigh ? "wire-active" : "wire-inactive";
+    const valid = crossXs.filter(cx => cx > minX + 8 && cx < maxX - 8).sort((a, b) => isLtoR ? a - b : b - a);
+    if (valid.length === 0) {
+        return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" class="${cls}" stroke-width="2.2" fill="none" />`;
+    }
+    let d = `M ${x1} ${y}`;
+    valid.forEach(cx => {
+        if (isLtoR) {
+            d += ` H ${cx - 7} A 7 7 0 0 1 ${cx + 7} ${y}`;
+        }
+        else {
+            d += ` H ${cx + 7} A 7 7 0 0 1 ${cx - 7} ${y}`;
+        }
+    });
+    d += ` H ${x2}`;
+    return `<path d="${d}" class="${cls}" stroke-width="2.2" fill="none" />`;
 }
-function svgCircuitLabel(x, y, text, opts) {
-    var _a, _b, _c, _d;
-    const size = (_a = opts === null || opts === void 0 ? void 0 : opts.size) !== null && _a !== void 0 ? _a : 14;
-    const weight = (_b = opts === null || opts === void 0 ? void 0 : opts.weight) !== null && _b !== void 0 ? _b : "700";
-    const color = (_c = opts === null || opts === void 0 ? void 0 : opts.color) !== null && _c !== void 0 ? _c : "#1a2744";
-    const anchor = (_d = opts === null || opts === void 0 ? void 0 : opts.anchor) !== null && _d !== void 0 ? _d : "middle";
-    return `<text x="${x}" y="${y}" text-anchor="${anchor}" font-size="${size}" font-weight="${weight}" fill="${color}" font-family="Inter, system-ui, sans-serif">${text}</text>`;
+function wireV(x, y1, y2, isHigh) {
+    const cls = isHigh ? "wire-active" : "wire-inactive";
+    return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" class="${cls}" stroke-width="2.2" fill="none" />`;
+}
+function dot(cx, cy, isHigh) {
+    const col = isHigh ? "var(--wire-high)" : "var(--wire-low)";
+    return `<circle cx="${cx}" cy="${cy}" r="3.8" class="circuit-junction" fill="${col}" />`;
 }
 function renderCircuitDiagram() {
-    const svgW = 980;
-    const svgH = 560;
-    const busX0 = 60;
-    const busGap = 28;
-    const busTop = 50;
-    const busBot = svgH - 20;
-    const busNames = ["A", "A\u2032", "B", "B\u2032", "C", "C\u2032", "D", "D\u2032"];
-    const busX = [];
-    for (let i = 0; i < 8; i++)
-        busX.push(busX0 + i * busGap);
-    const inputY = [90, 190, 290, 390];
-    const inputNames = ["A", "B", "C", "D"];
-    const inputWeights = ["8", "4", "2", "1"];
-    const andX = 370;
-    const andW = 60;
-    const andH = 34;
-    const segNames = ["a", "b", "c", "d", "e", "f", "g"];
-    const segY = [];
-    const segGap = 68;
-    const segStartY = 68;
-    for (let i = 0; i < 7; i++)
-        segY.push(segStartY + i * segGap);
-    const outX = svgW - 60;
-    const exprX = andX + andW / 2 + 120;
-    let svg = `<svg class="circuit-svg" xmlns="http://www.w3.org/2000/svg" width="${svgW}" height="${svgH}" viewBox="0 0 ${svgW} ${svgH}">`;
-    svg += `<rect x="0" y="0" width="${svgW}" height="${svgH}" rx="8" fill="#fafbfd" stroke="#d9dee7" stroke-width="1"/>`;
-    svg += svgCircuitLabel(svgW / 2, 28, "BCD-to-7-Segment Decoder", { size: 16, weight: "700" });
-    busX.forEach((x) => { svg += svgWire(x, busTop, x, busBot); });
-    busX.forEach((x, i) => {
-        svg += svgCircuitLabel(x, busTop - 8, busNames[i], { size: 11, weight: "700", color: i % 2 === 0 ? "#1a2744" : "#ef4444" });
-    });
-    inputNames.forEach((name, i) => {
-        const y = inputY[i];
-        const wX = busX[i * 2];
-        svg += svgCircuitLabel(20, y + 5, name, { size: 16, anchor: "start" });
-        svg += svgCircuitLabel(38, y + 5, inputWeights[i], { size: 10, weight: "600", color: "#6b7280", anchor: "start" });
-        svg += svgWire(50, y, wX, y);
-        const notX = (wX + busX[i * 2 + 1]) / 2;
-        svg += svgWire(wX, y, notX - 11, y);
-        svg += svgNOT(notX, y, 10);
-        svg += svgWire(notX + 14, y, busX[i * 2 + 1], y);
-        svg += svgJunction(wX, y);
-    });
-    segNames.forEach((seg, i) => {
-        const y = segY[i];
-        const gateTipX = andX + andW / 2;
-        const gateLeftX = andX - andW / 2;
-        svg += svgAND(andX, y, andW, andH);
-        svg += svgCircuitLabel(andX, y + 4, seg.toUpperCase(), { size: 12, weight: "700" });
-        svg += svgWire(gateTipX, y, outX - 20, y);
-        svg += `<circle cx="${outX - 16}" cy="${y}" r="4" fill="#ef4444" stroke="#b91c1c" stroke-width="1"/>`;
-        svg += svgCircuitLabel(outX, y + 5, seg.toUpperCase(), { size: 14, anchor: "start" });
-        const busIndices = getSegmentBusIndices(seg);
-        const inputSpacing = andH / (busIndices.length + 1);
-        busIndices.forEach((busIdx, j) => {
-            const srcX = busX[busIdx];
-            const tgtY = y - andH / 2 + inputSpacing * (j + 1);
-            svg += svgWire(srcX, y, srcX, tgtY);
-            svg += svgWire(srcX, tgtY, gateLeftX, tgtY);
-            svg += svgJunction(srcX, y);
-        });
-    });
-    const expressions = {
-        a: "A + C + BD + B\u2032D\u2032",
-        b: "B\u2032 + CD + C\u2032D\u2032",
-        c: "B + C\u2032 + D",
-        d: "A + CD\u2032 + B\u2032D\u2032 + B\u2032C + BC\u2032D",
-        e: "B\u2032D\u2032 + CD\u2032",
-        f: "A + BD\u2032 + C\u2032D\u2032 + BC\u2032",
-        g: "A + B\u2032C + CD\u2032 + BC\u2032"
-    };
-    segNames.forEach((seg, i) => {
-        svg += svgCircuitLabel(exprX, segY[i] + 5, expressions[seg], { size: 11, weight: "600", color: "#374151", anchor: "start" });
-    });
+    const a = (currentInput >> 3) & 1;
+    const b = (currentInput >> 2) & 1;
+    const c = (currentInput >> 1) & 1;
+    const d = currentInput & 1;
+    const notA = 1 - a;
+    const notB = 1 - b;
+    const notC = 1 - c;
+    const notD = 1 - d;
+    let svg = `<svg class="circuit-svg" xmlns="http://www.w3.org/2000/svg" width="800" height="380" viewBox="0 0 800 380">`;
+    // Main Decoder IC Housing
+    svg += `
+        <rect x="250" y="20" width="260" height="340" rx="14" fill="var(--bg-card-alt)" stroke="var(--border-color)" stroke-width="2.2"/>
+        <text x="380" y="180" text-anchor="middle" font-size="16" font-weight="800" fill="var(--text-primary)">${isHexMode ? "HEX" : "BCD"} to 7-SEG</text>
+        <text x="380" y="205" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text-muted)">Decoder Logic Matrix</text>
+        <text x="380" y="225" text-anchor="middle" font-size="11" font-weight="600" fill="var(--accent-secondary)">${isCommonAnode ? "Common Anode (Active LOW)" : "Common Cathode (Active HIGH)"}</text>
+    `;
+    const inY = [60, 130, 200, 270];
+    const inNames = ["A (8)", "B (4)", "C (2)", "D (1)"];
+    const inVals = [a, b, c, d];
+    const inNots = [notA, notB, notC, notD];
+    // Inputs, Inverter Gates, and Internal Rails
+    for (let i = 0; i < 4; i++) {
+        const yPos = inY[i];
+        const val = inVals[i];
+        const nVal = inNots[i];
+        // Input Wire Lead
+        svg += wireHopH(30, 130, yPos, [], val);
+        svg += `<text x="15" y="${yPos + 4}" font-size="13" font-weight="800" fill="var(--text-primary)">${inNames[i]}</text>`;
+        svg += dot(100, yPos, val);
+        // Tap for direct True rail
+        svg += wireV(100, yPos, yPos + 25, val);
+        svg += wireHopH(100, 250, yPos + 25, [], val);
+        // Inverter Gate for Complemented rail
+        svg += `
+            <g transform="translate(130, ${yPos - 12})">
+                <polygon points="0,0 26,12 0,24" fill="var(--bg-card)" stroke="var(--border-hover)" stroke-width="2" />
+                <circle cx="31" cy="12" r="4" fill="var(--bg-card)" stroke="var(--border-hover)" stroke-width="2" />
+            </g>
+        `;
+        svg += wireHopH(165, 250, yPos, [], nVal);
+    }
+    // 7 Segment Outputs
+    const outY = [45, 90, 135, 180, 225, 270, 315];
+    for (let i = 0; i < 7; i++) {
+        const sId = SEGMENTS[i];
+        const val = segmentValues[sId];
+        const isLit = isCommonAnode ? val === 0 : val === 1;
+        const yPos = outY[i];
+        // Segment output wire from IC to output driver badge
+        svg += wireHopH(510, 650, yPos, [], isLit);
+        svg += dot(510, yPos, isLit);
+        // Interactive glowing badge
+        svg += `
+            <g transform="translate(660, ${yPos - 13})">
+                <rect width="60" height="26" rx="8" fill="var(--bg-card)" stroke="${isLit ? "var(--seg-on)" : "var(--border-color)"}" stroke-width="${isLit ? "2" : "1.2"}"/>
+                <text x="30" y="17" text-anchor="middle" font-size="12" font-weight="800" fill="${isLit ? "var(--seg-on)" : "var(--text-muted)"}">seg ${sId} = ${val}</text>
+            </g>
+        `;
+    }
     svg += `</svg>`;
-    return svg;
+    circuitDiagram.innerHTML = svg;
+    applyZoom();
 }
-function getSegmentBusIndices(seg) {
-    const busMap = {
-        a: [0, 4, 2, 6, 3, 7],
-        b: [3, 4, 6, 5, 7],
-        c: [2, 5, 6],
-        d: [0, 4, 5, 3, 7, 2, 5, 6],
-        e: [3, 7, 4, 5],
-        f: [0, 2, 5, 7, 2, 5],
-        g: [0, 3, 4, 5, 2, 5]
-    };
-    return busMap[seg] || [];
+function applyZoom() {
+    const svg = circuitDiagram.querySelector("svg");
+    if (svg) {
+        svg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+    }
 }
+function resetZoom() {
+    zoomScale = 1.0;
+    panX = 0;
+    panY = 0;
+    applyZoom();
+}
+zoomInBtn.addEventListener("click", () => {
+    zoomScale = Math.min(2.5, zoomScale + 0.2);
+    applyZoom();
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+});
+zoomOutBtn.addEventListener("click", () => {
+    zoomScale = Math.max(0.4, zoomScale - 0.2);
+    applyZoom();
+    if (window.StudioFX)
+        window.StudioFX.click(false);
+});
+zoomResetBtn.addEventListener("click", resetZoom);
+circuitDiagram.addEventListener("wheel", (e) => {
+    e.preventDefault();
+    const delta = e.deltaY < 0 ? 0.1 : -0.1;
+    zoomScale = Math.min(2.5, Math.max(0.4, zoomScale + delta));
+    applyZoom();
+}, { passive: false });
+circuitDiagram.addEventListener("mousedown", (e) => {
+    if (e.button !== 0)
+        return;
+    isDragging = true;
+    startDragX = e.clientX - panX;
+    startDragY = e.clientY - panY;
+    circuitDiagram.style.cursor = "grabbing";
+});
+window.addEventListener("mousemove", (e) => {
+    if (!isDragging)
+        return;
+    panX = e.clientX - startDragX;
+    panY = e.clientY - startDragY;
+    applyZoom();
+});
+window.addEventListener("mouseup", () => {
+    isDragging = false;
+    circuitDiagram.style.cursor = "grab";
+});
 /* =========================================================
-   7-SEGMENT DISPLAY — INTERACTIVE CLICK
+   COUNTER CONTROLS
 ========================================================= */
-function renderClickableDisplay() {
-    segmentDisplay.innerHTML = render7Segment(segmentValues, 220);
+function stepCounter(dir = 1) {
+    const maxVal = isHexMode ? 15 : 9;
+    if (dir === 1) {
+        currentInput = (currentInput + 1) % (maxVal + 1);
+    }
+    else {
+        currentInput = (currentInput - 1 + (maxVal + 1)) % (maxVal + 1);
+    }
+    if (window.StudioFX)
+        window.StudioFX.tick();
+    syncDisplayFromInput();
 }
-/* =========================================================
-   BCD INPUT PANEL
-========================================================= */
-function buildBCDInput() {
-    bcdInput.innerHTML = "";
-    const bits = ["A", "B", "C", "D"];
-    bits.forEach((name, i) => {
-        const val = (currentInput >> (3 - i)) & 1;
-        const group = document.createElement("div");
-        group.className = "input-group";
-        group.innerHTML = `
-            <label>${name} (${Math.pow(2, 3 - i)})</label>
-            <div class="input-toggle" data-input="${name}">
-                <button type="button" class="input-toggle-btn ${val === 0 ? 'active' : ''}" data-value="0">0</button>
-                <button type="button" class="input-toggle-btn ${val === 1 ? 'active' : ''}" data-value="1">1</button>
-            </div>`;
-        bcdInput.appendChild(group);
-    });
-    bcdInput.querySelectorAll(".input-toggle").forEach(toggle => {
-        const btns = toggle.querySelectorAll(".input-toggle-btn");
-        btns.forEach(btn => {
-            btn.addEventListener("click", () => {
-                btns.forEach(b => b.classList.remove("active"));
-                btn.classList.add("active");
-                updateBCDFromInputs();
-            });
-        });
-    });
-}
-function updateBCDFromInputs() {
-    let val = 0;
-    const bits = ["A", "B", "C", "D"];
-    bits.forEach((name, i) => {
-        var _a;
-        const toggle = bcdInput.querySelector(`[data-input="${name}"]`);
-        const active = toggle === null || toggle === void 0 ? void 0 : toggle.querySelector(".input-toggle-btn.active");
-        const bitVal = Number((_a = active === null || active === void 0 ? void 0 : active.getAttribute("data-value")) !== null && _a !== void 0 ? _a : 0);
-        val |= (bitVal << (3 - i));
-    });
-    currentInput = Math.min(val, 9);
-    updateDisplay();
-}
-function syncInputsFromValue() {
-    const bits = ["A", "B", "C", "D"];
-    bits.forEach((name, i) => {
-        const bitVal = (currentInput >> (3 - i)) & 1;
-        const toggle = bcdInput.querySelector(`[data-input="${name}"]`);
-        const btns = toggle === null || toggle === void 0 ? void 0 : toggle.querySelectorAll(".input-toggle-btn");
-        btns === null || btns === void 0 ? void 0 : btns.forEach(b => {
-            b.classList.toggle("active", Number(b.getAttribute("data-value")) === bitVal);
-        });
-    });
-}
-/* =========================================================
-   UPDATE DISPLAY & TABLES
-========================================================= */
-function updateDisplay() {
-    var _a;
-    const pattern = (_a = BCD_PATTERNS[currentInput]) !== null && _a !== void 0 ? _a : { a: 0, b: 0, c: 0, d: 0, e: 0, f: 0, g: 0 };
-    segmentValues = pattern;
-    renderClickableDisplay();
-    updateTruthTableHighlight();
-}
-function updateTruthTableHighlight() {
-    const rows = truthTable.querySelectorAll("tbody tr");
-    rows.forEach((row, idx) => {
-        row.classList.toggle("highlighted", idx === currentInput);
-    });
-}
-/* =========================================================
-   COUNTER MODE
-========================================================= */
-function startCounter() {
+counterStart.addEventListener("click", () => {
     if (counterInterval)
         return;
-    const speed = Number(counterSpeed.value);
-    counterInterval = setInterval(() => {
-        currentInput = currentInput >= 9 ? 0 : currentInput + 1;
-        syncInputsFromValue();
-        updateDisplay();
-    }, speed);
     counterStart.disabled = true;
     counterStop.disabled = false;
-}
-function stopCounter() {
+    if (window.StudioFX)
+        window.StudioFX.relay();
+    const speed = Number(counterSpeed.value);
+    counterInterval = setInterval(() => {
+        stepCounter(1);
+    }, speed);
+});
+counterStop.addEventListener("click", () => {
     if (counterInterval) {
         clearInterval(counterInterval);
         counterInterval = null;
     }
     counterStart.disabled = false;
     counterStop.disabled = true;
-}
-function resetCounter() {
-    stopCounter();
+    if (window.StudioFX)
+        window.StudioFX.click(false);
+});
+counterReset.addEventListener("click", () => {
+    if (counterInterval) {
+        clearInterval(counterInterval);
+        counterInterval = null;
+        counterStart.disabled = false;
+        counterStop.disabled = true;
+    }
     currentInput = 0;
-    syncInputsFromValue();
-    updateDisplay();
-}
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+    syncDisplayFromInput();
+});
+counterStepFwd.addEventListener("click", () => {
+    stepCounter(1);
+});
+counterStepBack.addEventListener("click", () => {
+    stepCounter(-1);
+});
+counterSpeed.addEventListener("input", () => {
+    const ms = Number(counterSpeed.value);
+    const hz = (1000 / ms).toFixed(2);
+    speedLabel.textContent = `${ms}ms (${hz} Hz)`;
+    if (counterInterval) {
+        clearInterval(counterInterval);
+        counterInterval = setInterval(() => {
+            stepCounter(1);
+        }, ms);
+    }
+});
 /* =========================================================
-   STEP NAVIGATION
+   LED PHOSPHOR COLOR PICKER
 ========================================================= */
-const categoryBtns = document.querySelectorAll(".category-btn");
-categoryBtns.forEach(btn => {
-    btn.addEventListener("click", () => {
-        selectedCategory = btn.getAttribute("data-category");
-        if (selectedCategory === "interactive") {
-            showStep3("commonCathode");
-        }
-        else if (selectedCategory === "counter") {
-            showStep3("decadeCounter");
+document.querySelectorAll(".color-swatch").forEach(swatch => {
+    swatch.addEventListener("click", () => {
+        const theme = swatch.getAttribute("data-led");
+        if (theme) {
+            document.body.classList.remove("led-red", "led-green", "led-cyan", "led-amber", "led-purple", "led-white");
+            document.body.classList.add(theme);
+            document.querySelectorAll(".color-swatch").forEach(s => s.classList.remove("active"));
+            swatch.classList.add("active");
+            if (window.StudioFX)
+                window.StudioFX.click(true);
+            updateAllViews();
         }
     });
 });
+/* =========================================================
+   MODE & CONFIGURATION CONTROLS
+========================================================= */
+document.querySelectorAll(".category-btn").forEach(btn => {
+    btn.addEventListener("click", () => {
+        const cat = btn.getAttribute("data-category");
+        currentMode = cat;
+        step1.classList.add("hidden");
+        step3.classList.remove("hidden");
+        counterSection.classList.toggle("hidden", currentMode !== "counter");
+        displayHint.textContent = currentMode === "interactive"
+            ? "Click segments, use binary switches, or press 0-F on your keyboard to control the display."
+            : "Use the clock controls below to run the automated counter.";
+        breadcrumbCurrent.textContent = `7-Segment Display Simulator / ${currentMode === "interactive" ? "Interactive Mode" : "Counter Mode"}`;
+        if (window.StudioFX)
+            window.StudioFX.relay();
+        syncDisplayFromInput();
+        buildTruthTable();
+        buildExpressions();
+        buildKarnaughMaps();
+    });
+});
 backToStep2.addEventListener("click", () => {
-    stopCounter();
-    step3.classList.add("hidden");
-    step1.classList.remove("hidden");
-    selectedCategory = null;
-    categoryBtns.forEach(b => b.classList.remove("selected"));
-});
-counterStart.addEventListener("click", startCounter);
-counterStop.addEventListener("click", stopCounter);
-counterReset.addEventListener("click", resetCounter);
-counterSpeed.addEventListener("input", () => {
-    speedLabel.textContent = `${counterSpeed.value}ms`;
     if (counterInterval) {
-        stopCounter();
-        startCounter();
+        clearInterval(counterInterval);
+        counterInterval = null;
+        counterStart.disabled = false;
+        counterStop.disabled = true;
     }
+    step1.classList.remove("hidden");
+    step3.classList.add("hidden");
+    breadcrumbCurrent.textContent = "7-Segment Display Simulator";
+});
+encBcdBtn.addEventListener("click", () => {
+    isHexMode = false;
+    encBcdBtn.classList.add("active");
+    encHexBtn.classList.remove("active");
+    if (currentInput > 9)
+        currentInput = 0;
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+    syncDisplayFromInput();
+    buildTruthTable();
+    buildExpressions();
+    buildKarnaughMaps();
+});
+encHexBtn.addEventListener("click", () => {
+    isHexMode = true;
+    encHexBtn.classList.add("active");
+    encBcdBtn.classList.remove("active");
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+    syncDisplayFromInput();
+    buildTruthTable();
+    buildExpressions();
+    buildKarnaughMaps();
+});
+polCathodeBtn.addEventListener("click", () => {
+    isCommonAnode = false;
+    polCathodeBtn.classList.add("active");
+    polAnodeBtn.classList.remove("active");
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+    syncDisplayFromInput();
+    buildTruthTable();
+    buildExpressions();
+});
+polAnodeBtn.addEventListener("click", () => {
+    isCommonAnode = true;
+    polAnodeBtn.classList.add("active");
+    polCathodeBtn.classList.remove("active");
+    if (window.StudioFX)
+        window.StudioFX.click(true);
+    syncDisplayFromInput();
+    buildTruthTable();
+    buildExpressions();
 });
 /* =========================================================
-   STEP DISPLAY
+   INITIALIZATION
 ========================================================= */
-function showStep3(circuitId) {
-    step1.classList.add("hidden");
-    step3.classList.remove("hidden");
-    const isCounterMode = circuitId === "decadeCounter";
-    currentInput = 0;
-    circuitTitle.textContent = isCounterMode
-        ? "Decade Counter (0\u20139)"
-        : "Common Cathode 7-Segment Display";
-    displayHint.textContent = isCounterMode
-        ? "BCD toggles update automatically as the counter runs."
-        : "Click segments or use BCD input below to control the display.";
-    liveHint.classList.toggle("hidden", isCounterMode);
-    displaySection.classList.remove("hidden");
-    inputSection.classList.remove("hidden");
-    counterSection.classList.toggle("hidden", !isCounterMode);
-    let num = 65;
-    document.getElementById("ttSectionNum").textContent = String.fromCharCode(num++);
-    document.getElementById("exprSectionNum").textContent = String.fromCharCode(num++);
-    document.getElementById("kmapSectionNum").textContent = String.fromCharCode(num++);
-    document.getElementById("circuitSectionNum").textContent = String.fromCharCode(num++);
-    buildBCDInput();
-    if (isCounterMode) {
-        bcdInput.querySelectorAll(".input-toggle-btn").forEach(btn => {
-            btn.disabled = true;
-        });
-    }
-    updateDisplay();
-    truthTable.innerHTML = buildTruthTable();
-    showExpressions();
-    showKarnaughMaps();
-    circuitDiagram.innerHTML = renderCircuitDiagram();
-    step3.scrollIntoView({ behavior: "smooth" });
-}
-/* =========================================================
-   INITIAL STATE
-========================================================= */
-step1.classList.remove("hidden");
+buildInputs();
+buildTruthTable();
+buildExpressions();
+buildKarnaughMaps();
+syncDisplayFromInput();

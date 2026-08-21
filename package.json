@@ -1,0 +1,13 @@
+{
+  "name": "digital-circuits-suite",
+  "version": "2.0.0",
+  "private": true,
+  "description": "Digital Circuits Suite - Boolean Logic Solver, Circuits Simulator, and 7-Segment Display Simulator",
+  "scripts": {
+    "build:web1": "node Web3/node_modules/typescript/bin/tsc Web1/script.ts --target es2020 --module es2020 --outDir Web1/ --lib dom,es2020",
+    "build:web2": "node Web3/node_modules/typescript/bin/tsc Web2/script.ts --target es2020 --module es2020 --outDir Web2/ --lib dom,es2020",
+    "build:web3": "node Web3/node_modules/typescript/bin/tsc Web3/script.ts --target es2020 --module es2020 --outDir Web3/ --lib dom,es2020",
+    "build": "npm run build:web1 && npm run build:web2 && npm run build:web3",
+    "dev": "npx vite"
+  }
+}

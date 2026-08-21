@@ -3,47 +3,145 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Digital Circuits Project - Boolean Logic Solver, Digital Circuits Simulator, and 7-Segment Display Simulator">
-    <title>Digital Circuits Project</title>
+    <meta name="description" content="Digital Circuits Suite - High-Precision Boolean Logic Solver, Combinational Circuits Simulator, and 7-Segment Display Simulator">
+    <title>Digital Circuits Suite</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="fx.js"></script>
 </head>
 <body>
 
-<header class="site-header">
-    <div class="header-content">
-        <h1>Digital Circuits Project</h1>
-        <p>Interactive tools for understanding digital logic and circuit design</p>
+<!-- GLOBAL NAVIGATION BAR -->
+<nav class="global-navbar">
+    <div class="nav-container">
+        <a href="index.html" class="nav-brand">
+            <span class="brand-icon-pulse">⚡</span>
+            <span>Digital Circuits Suite</span>
+            <span class="brand-badge">Studio</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="index.html" class="nav-link active">🏠 Home</a></li>
+            <li><a href="Web1/index.html" class="nav-link">⚡ Boolean Solver</a></li>
+            <li><a href="Web2/index.html" class="nav-link">🔧 Circuits Sim</a></li>
+            <li><a href="Web3/index.html" class="nav-link">🔢 7-Segment Display</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
+                🔊 <span class="sound-label">Sound: ON</span>
+            </button>
+            <button type="button" class="nav-tool-btn theme-toggle-btn" aria-label="Toggle theme">
+                🌙 <span class="theme-label">Dark Mode</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- HERO BANNER -->
+<header class="site-hero">
+    <div class="hero-glow-blob"></div>
+    <div class="hero-badge">
+        <span class="hero-badge-pulse"></span>
+        <span>Interactive Digital Hardware Studio</span>
+    </div>
+    <h1>Digital Circuits & Logic Suite</h1>
+    <p>A high-performance digital logic engineering platform. Minimize Boolean equations, simulate combinational logic circuits in real time, and analyze display decoders.</p>
+
+    <!-- LIVE INTERACTIVE LOGIC SANDBOX -->
+    <div class="hero-sandbox">
+        <div class="sandbox-header">
+            <span class="sandbox-title">⚡ Live Logic Quick-Lab (Interactive Preview)</span>
+            <span style="font-size:12px; color:var(--text-muted);">Toggle inputs to test logic gates</span>
+        </div>
+        <div class="sandbox-grid">
+            <div class="sandbox-inputs">
+                <button type="button" class="sandbox-switch" id="sbInpA">
+                    <span>Input A:</span>
+                    <kbd id="sbInpAVal">0</kbd>
+                </button>
+                <button type="button" class="sandbox-switch" id="sbInpB">
+                    <span>Input B:</span>
+                    <kbd id="sbInpBVal">0</kbd>
+                </button>
+            </div>
+            <div class="sandbox-outputs">
+                <div class="sandbox-gate-card" id="cardAnd">
+                    <span class="gate-type">AND (A · B)</span>
+                    <span class="gate-out-val" id="valAnd">0</span>
+                </div>
+                <div class="sandbox-gate-card" id="cardOr">
+                    <span class="gate-type">OR (A + B)</span>
+                    <span class="gate-out-val" id="valOr">0</span>
+                </div>
+                <div class="sandbox-gate-card" id="cardXor">
+                    <span class="gate-type">XOR (A ⊕ B)</span>
+                    <span class="gate-out-val" id="valXor">0</span>
+                </div>
+                <div class="sandbox-gate-card" id="cardNand">
+                    <span class="gate-type">NAND (A · B)'</span>
+                    <span class="gate-out-val" id="valNand">1</span>
+                </div>
+                <div class="sandbox-gate-card" id="cardNor">
+                    <span class="gate-type">NOR (A + B)'</span>
+                    <span class="gate-out-val" id="valNor">1</span>
+                </div>
+            </div>
+        </div>
     </div>
 </header>
 
 <main class="main-container">
 
-    <section class="intro-card card">
-        <h2>Welcome</h2>
-        <p>This project explores the fundamentals of digital circuits through three interactive simulators. Each tool covers a different aspect of digital logic design — from Boolean algebra to combinational circuits to display decoding.</p>
-    </section>
-
     <section class="projects-grid">
 
+        <!-- Project 1 -->
         <a href="Web1/index.html" class="project-card">
-            <span class="project-icon">⚡</span>
-            <span class="project-number">1</span>
+            <div class="card-top-row">
+                <span class="project-icon">⚡</span>
+                <span class="project-number">1</span>
+            </div>
             <h3>Boolean Logic Solver</h3>
-            <p>Truth tables, Boolean expressions, minterms, maxterms, Karnaugh maps, and logic circuit diagrams. Supports AND, OR, NOT, NAND, NOR, and XOR gates.</p>
+            <p>Advanced Boolean simplification engine featuring Quine-McCluskey minimization, zero-overlap vector schematic generation, and live multimeter signal probing.</p>
+            <ul class="project-features">
+                <li>Truth tables, Minterms & Don't Cares</li>
+                <li>Visual K-Maps with grouping loops</li>
+                <li>Live interactive signal probing & gate evaluation</li>
+                <li>Synthesizable Verilog, C/C++ & LaTeX export</li>
+            </ul>
+            <span class="card-action">Launch Solver →</span>
         </a>
 
+        <!-- Project 2 -->
         <a href="Web2/index.html" class="project-card">
-            <span class="project-icon">🔧</span>
-            <span class="project-number">2</span>
+            <div class="card-top-row">
+                <span class="project-icon">🔧</span>
+                <span class="project-number">2</span>
+            </div>
             <h3>Digital Circuits Simulator</h3>
-            <p>Adders, subtractors, and multiplexers with live input toggling, interactive circuit diagrams, truth tables, and Boolean expressions.</p>
+            <p>Interactive circuit simulator with live wire signal tracing, ripple propagation animations, and real-time digital logic oscilloscope timing diagrams.</p>
+            <ul class="project-features">
+                <li>17 Circuits: Adders, Subtractors, MUX, DEMUX, Encoders</li>
+                <li>Live Real-Time Waveform Timing Analyzer</li>
+                <li>Bit-by-bit carry ripple animations with pulse glow</li>
+                <li>Instant Verilog HDL synthesis module output</li>
+            </ul>
+            <span class="card-action">Launch Simulator →</span>
         </a>
 
+        <!-- Project 3 -->
         <a href="Web3/index.html" class="project-card">
-            <span class="project-icon">🔢</span>
-            <span class="project-number">3</span>
+            <div class="card-top-row">
+                <span class="project-icon">🔢</span>
+                <span class="project-number">3</span>
+            </div>
             <h3>7-Segment Display Simulator</h3>
-            <p>BCD-to-7-segment decoder with interactive mode, decade counter, truth tables, Karnaugh maps, and circuit diagrams.</p>
+            <p>Full BCD (0–9) & Hexadecimal (0–F) decoder simulator with customizable phosphor LED colors, reverse glyph decoding, and digital clock wave analyzer.</p>
+            <ul class="project-features">
+                <li>BCD & Full Hex (0–F) decoding modes</li>
+                <li>Common Cathode vs Common Anode polarity</li>
+                <li>LED Color Customizer (Red, Green, Cyan, Amber, Purple)</li>
+                <li>Automated Clock Counter with single pulse triggers</li>
+            </ul>
+            <span class="card-action">Launch Simulator →</span>
         </a>
 
     </section>
@@ -51,10 +149,72 @@
 </main>
 
 <footer class="site-footer">
-    <h3>Digital Circuits Project</h3>
+    <h3>Digital Circuits Suite</h3>
     <p>Boolean Logic • Combinational Circuits • Display Decoding</p>
-    <p class="footer-small">Built with HTML, CSS, TypeScript & Vite</p>
+    <p class="footer-small">Designed for High-Performance Digital Logic Education & Synthesis</p>
 </footer>
+
+<script>
+    // Live Hero Sandbox Logic
+    (function () {
+        let inA = 0, inB = 0;
+        const btnA = document.getElementById("sbInpA");
+        const btnB = document.getElementById("sbInpB");
+        const valA = document.getElementById("sbInpAVal");
+        const valB = document.getElementById("sbInpBVal");
+
+        const cardAnd = document.getElementById("cardAnd");
+        const cardOr = document.getElementById("cardOr");
+        const cardXor = document.getElementById("cardXor");
+        const cardNand = document.getElementById("cardNand");
+        const cardNor = document.getElementById("cardNor");
+
+        const valAnd = document.getElementById("valAnd");
+        const valOr = document.getElementById("valOr");
+        const valXor = document.getElementById("valXor");
+        const valNand = document.getElementById("valNand");
+        const valNor = document.getElementById("valNor");
+
+        function updateSandbox() {
+            btnA.classList.toggle("active", inA === 1);
+            btnB.classList.toggle("active", inB === 1);
+            valA.textContent = inA;
+            valB.textContent = inB;
+
+            const outAnd = inA & inB;
+            const outOr = inA | inB;
+            const outXor = inA ^ inB;
+            const outNand = 1 - outAnd;
+            const outNor = 1 - outOr;
+
+            valAnd.textContent = outAnd;
+            valOr.textContent = outOr;
+            valXor.textContent = outXor;
+            valNand.textContent = outNand;
+            valNor.textContent = outNor;
+
+            cardAnd.classList.toggle("high", outAnd === 1);
+            cardOr.classList.toggle("high", outOr === 1);
+            cardXor.classList.toggle("high", outXor === 1);
+            cardNand.classList.toggle("high", outNand === 1);
+            cardNor.classList.toggle("high", outNor === 1);
+        }
+
+        btnA.addEventListener("click", () => {
+            inA = 1 - inA;
+            if (window.StudioFX) window.StudioFX.click(inA === 1);
+            updateSandbox();
+        });
+
+        btnB.addEventListener("click", () => {
+            inB = 1 - inB;
+            if (window.StudioFX) window.StudioFX.click(inB === 1);
+            updateSandbox();
+        });
+
+        updateSandbox();
+    })();
+</script>
 
 </body>
 </html>

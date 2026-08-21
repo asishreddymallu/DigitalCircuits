@@ -3,21 +3,56 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <meta name="description" content="Boolean Logic Solver - Truth Tables, Minterms, Maxterms and Logic Circuits">
+    <meta name="description" content="Boolean Logic Solver - Truth Tables, Minterms, Maxterms, Logic Circuits and Quine-McCluskey Minimization">
     <title>Boolean Logic Solver</title>
     <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="fx.js"></script>
 </head>
 <body>
+
+<!-- GLOBAL NAVIGATION BAR -->
+<nav class="global-navbar">
+    <div class="nav-container">
+        <a href="../index.html" class="nav-brand">
+            <span class="brand-icon-pulse">⚡</span>
+            <span>Digital Circuits Suite</span>
+            <span class="brand-badge">Tool 1</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="../index.html" class="nav-link">🏠 Home</a></li>
+            <li><a href="index.html" class="nav-link active">⚡ Boolean Solver</a></li>
+            <li><a href="../Web2/index.html" class="nav-link">🔧 Circuits Sim</a></li>
+            <li><a href="../Web3/index.html" class="nav-link">🔢 7-Segment Display</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
+                🔊 <span class="sound-label">Sound: ON</span>
+            </button>
+            <button type="button" class="nav-tool-btn theme-toggle-btn" aria-label="Toggle theme">
+                🌙 <span class="theme-label">Dark Mode</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- BREADCRUMB BAR -->
+<div class="breadcrumb-bar">
+    <a href="../index.html">Home</a>
+    <span>/</span>
+    <span>Boolean Logic Solver</span>
+</div>
 
 <header class="site-header">
     <div class="header-content">
         <h1>Boolean Logic Solver</h1>
-        <p>Truth Tables • Boolean Expressions • Minterms • Maxterms</p>
+        <p>Truth Tables • Quine-McCluskey Reduction • K-Maps • Vector Logic Schematics</p>
     </div>
 </header>
 
 <main class="main-container">
 
+    <!-- STEP 1: Input Card -->
     <section class="card input-card">
         <div class="section-heading">
             <span class="section-number">1</span>
@@ -30,13 +65,15 @@
         <div class="form-group">
             <label for="inputType">Input Type</label>
             <select id="inputType">
-                <option value="expression">Boolean Expression</option>                    <option value="minterms">Minterms</option>
-                    <option value="maxterms">Maxterms</option>
-                    <option value="dontCare">Minterms + Don't Cares</option>
+                <option value="expression">Boolean Expression</option>
+                <option value="minterms">Minterms (Σm)</option>
+                <option value="maxterms">Maxterms (ΠM)</option>
+                <option value="dontCare">Minterms + Don't Cares (Σm + d)</option>
                 <option value="truthTable">Truth Table</option>
             </select>
         </div>
 
+        <!-- Boolean Expression Input -->
         <div id="expressionSection" class="input-subsection">
             <div class="form-group">
                 <label for="expression">Boolean Expression</label>
@@ -46,112 +83,131 @@
                 </div>
                 <div class="help-text">
                     <strong>Supported notation:</strong>
-                    A, B, C &nbsp; + = OR &nbsp; * = AND &nbsp; ^ = XOR &nbsp; ' = NOT &nbsp; ! = NOT &nbsp; () = Grouping
+                    A, B, C &nbsp; <code>+</code> = OR &nbsp; <code>*</code> or concatenation = AND &nbsp; <code>^</code> = XOR &nbsp; <code>'</code> or <code>!</code> = NOT &nbsp; <code>()</code> = Grouping
                     <br>
                     Examples: <code>A'B + BC</code> &nbsp; <code>(A+B)C</code> &nbsp; <code>A^B</code> (XOR)
                 </div>
             </div>
         </div>
 
+        <!-- Minterms Input -->
         <div id="mintermSection" class="input-subsection hidden">
             <div class="form-group">
                 <label for="mintermVariables">Number of Variables</label>
                 <select id="mintermVariables">
-                    <option value="2">2</option>
-                    <option value="3" selected>3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
+                    <option value="2">2 (A, B)</option>
+                    <option value="3" selected>3 (A, B, C)</option>
+                    <option value="4">4 (A, B, C, D)</option>
+                    <option value="5">5 (A, B, C, D, E)</option>
+                    <option value="6">6 (A, B, C, D, E, F)</option>
                 </select>
             </div>
             <div class="form-group">
-                <label for="minterms">Minterms</label>
-                <input id="minterms" type="text" placeholder="Example: 1,3,5,7" autocomplete="off">
+                <label for="minterms">Minterms (comma separated)</label>
+                <input id="minterms" type="text" placeholder="Example: 1, 3, 5, 7" autocomplete="off">
                 <div id="mintermExample" class="help-text"></div>
             </div>
         </div>
 
+        <!-- Don't Care Section -->
         <div id="dontCareSection" class="input-subsection hidden">
             <div class="form-group">
                 <label for="dontCareVariables">Number of Variables</label>
                 <select id="dontCareVariables">
-                    <option value="2">2</option>
-                    <option value="3" selected>3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
+                    <option value="2">2 (A, B)</option>
+                    <option value="3" selected>3 (A, B, C)</option>
+                    <option value="4">4 (A, B, C, D)</option>
+                    <option value="5">5 (A, B, C, D, E)</option>
+                    <option value="6">6 (A, B, C, D, E, F)</option>
                 </select>
             </div>
             <div class="form-group">
-                <label for="dontCareMinterms">Minterms (output = 1)</label>
-                <input id="dontCareMinterms" type="text" placeholder="Example: 1,3,5" autocomplete="off">
-                <div id="dontCareMintermExample" class="help-text"></div>
+                <label for="dontCareMinterms">Minterms (F = 1)</label>
+                <input id="dontCareMinterms" type="text" placeholder="Example: 1, 3, 7" autocomplete="off">
             </div>
             <div class="form-group">
-                <label for="dontCares">Don't Cares (output = X)</label>
-                <input id="dontCares" type="text" placeholder="Example: 0,6" autocomplete="off">
+                <label for="dontCares">Don't Care Terms (F = X)</label>
+                <input id="dontCares" type="text" placeholder="Example: 0, 5" autocomplete="off">
                 <div id="dontCareExample" class="help-text"></div>
-            </div>
-            <div class="help-text dont-care-info">
-                <strong>Don't care terms</strong> are input combinations where the output can be either 0 or 1. They are treated as &ldquo;X&rdquo; in the truth table and can be freely set to optimize the simplified expression.
             </div>
         </div>
 
+        <!-- Maxterms Input -->
         <div id="maxtermSection" class="input-subsection hidden">
             <div class="form-group">
                 <label for="maxtermVariables">Number of Variables</label>
                 <select id="maxtermVariables">
-                    <option value="2">2</option>
-                    <option value="3" selected>3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
+                    <option value="2">2 (A, B)</option>
+                    <option value="3" selected>3 (A, B, C)</option>
+                    <option value="4">4 (A, B, C, D)</option>
+                    <option value="5">5 (A, B, C, D, E)</option>
+                    <option value="6">6 (A, B, C, D, E, F)</option>
                 </select>
             </div>
             <div class="form-group">
-                <label for="maxterms">Maxterms</label>
-                <input id="maxterms" type="text" placeholder="Example: 0,2,4,6" autocomplete="off">
+                <label for="maxterms">Maxterms (comma separated)</label>
+                <input id="maxterms" type="text" placeholder="Example: 0, 2, 4, 6" autocomplete="off">
                 <div id="maxtermExample" class="help-text"></div>
             </div>
         </div>
 
+        <!-- Truth Table Manual Input -->
         <div id="truthTableSection" class="input-subsection hidden">
             <div class="form-group">
                 <label for="truthVariables">Number of Variables</label>
                 <select id="truthVariables">
-                    <option value="2">2</option>
-                    <option value="3" selected>3</option>
-                    <option value="4">4</option>
-                    <option value="5">5</option>
-                    <option value="6">6</option>
+                    <option value="2">2 (A, B)</option>
+                    <option value="3" selected>3 (A, B, C)</option>
+                    <option value="4">4 (A, B, C, D)</option>
+                    <option value="5">5 (A, B, C, D, E)</option>
+                    <option value="6">6 (A, B, C, D, E, F)</option>
                 </select>
             </div>
             <div id="userTruthTable" class="truth-table-input"></div>
         </div>
 
         <button id="solveButton" class="solve-button" type="button" aria-label="Solve Boolean function">
-            <span aria-hidden="true">⚡</span> Solve Boolean Function
+            <span aria-hidden="true">⚡</span> Solve & Minimize Function
         </button>
 
         <div id="errorMessage" class="error-message hidden"></div>
     </section>
 
+    <!-- RESULTS SECTION -->
     <section id="results" class="results-section hidden">
 
+        <!-- Multimeter Logic HUD -->
+        <div class="multimeter-hud">
+            <div class="hud-item">
+                <span>⚡ Active Vector:</span>
+                <span class="hud-val" id="hudVector">A=0, B=0, C=0</span>
+            </div>
+            <div class="hud-item">
+                <span>Output F:</span>
+                <span class="hud-val" id="hudOutput" style="color:#10b981;">0 (0.0 V)</span>
+            </div>
+            <div class="hud-item">
+                <span>Min Terms:</span>
+                <span class="hud-val" id="hudTermCount">2 Implicants</span>
+            </div>
+        </div>
+
+        <!-- Expression Info -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">2</span>
                 <div>
-                    <h2>Boolean Function</h2>
-                    <p>Function being evaluated.</p>
+                    <h2>Input Boolean Function</h2>
+                    <p>Evaluated algebraic input.</p>
                 </div>
             </div>
             <div class="expression-row">
                 <div id="originalExpression" class="expression-box"></div>
-                <button type="button" class="copy-btn" title="Copy expression to clipboard" aria-label="Copy expression to clipboard">📋 Copy</button>
+                <button type="button" class="copy-btn" title="Copy expression">📋 Copy</button>
             </div>
         </section>
 
+        <!-- Truth Table -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">3</span>
@@ -160,54 +216,65 @@
                     <p>Output for every possible input combination.</p>
                 </div>
             </div>
+            <div class="export-header" style="margin-bottom: 12px; display:flex; justify-content:flex-end;">
+                <button type="button" id="copyMarkdownTableBtn" class="export-btn">📋 Copy as Markdown Table</button>
+            </div>
             <div id="generatedTruthTable" class="result-table-container"></div>
         </section>
 
-        <section class="card">
-            <div class="section-heading">
-                <span class="section-number">4</span>
-                <div>
-                    <h2>Canonical SOP</h2>
-                    <p>Sum of Products representation.</p>
+        <!-- Canonical SOP & POS -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+            <section class="card">
+                <div class="section-heading">
+                    <span class="section-number">4</span>
+                    <div>
+                        <h2>Canonical SOP</h2>
+                        <p>Sum of Products (minterms).</p>
+                    </div>
                 </div>
-            </div>
-            <div id="canonicalSOP" class="expression-box"></div>
-        </section>
+                <div id="canonicalSOP" class="expression-box"></div>
+            </section>
 
-        <section class="card">
-            <div class="section-heading">
-                <span class="section-number">5</span>
-                <div>
-                    <h2>Canonical POS</h2>
-                    <p>Product of Sums representation.</p>
+            <section class="card">
+                <div class="section-heading">
+                    <span class="section-number">5</span>
+                    <div>
+                        <h2>Canonical POS</h2>
+                        <p>Product of Sums (maxterms).</p>
+                    </div>
                 </div>
-            </div>
-            <div id="canonicalPOS" class="expression-box"></div>
-        </section>            <section class="card simplified-card">
+                <div id="canonicalPOS" class="expression-box"></div>
+            </section>
+        </div>
+
+        <!-- Simplified Expression -->
+        <section class="card simplified-card">
             <div class="section-heading">
                 <span class="section-number">6</span>
                 <div>
                     <h2>Simplified Boolean Expression</h2>
-                    <p>Minimum Boolean expression obtained by minimization.</p>
+                    <p>Minimum Boolean expression obtained by Quine-McCluskey minimization.</p>
                 </div>
             </div>
             <div class="expression-row">
                 <div id="simplifiedExpression" class="expression-box simplified-expression"></div>
-                <button type="button" class="copy-btn" title="Copy simplified expression to clipboard" aria-label="Copy simplified expression to clipboard">📋 Copy</button>
+                <button type="button" class="copy-btn" title="Copy simplified expression">📋 Copy</button>
             </div>
         </section>
 
+        <!-- Karnaugh Map -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">7</span>
                 <div>
-                    <h2>Karnaugh Map</h2>
-                    <p>Visual minimization using grouped cells.</p>
+                    <h2>Karnaugh Map with Visual Prime Implicants</h2>
+                    <p>Visual minimization with highlighted grouping loops.</p>
                 </div>
             </div>
             <div id="karnaughMap" class="karnaugh-map-container"></div>
         </section>
 
+        <!-- Don't Care Summary -->
         <section id="dontCareResults" class="card hidden">
             <div class="section-heading">
                 <span class="section-number">8</span>
@@ -219,45 +286,116 @@
             <div id="dontCareSummary" class="dont-care-summary-box"></div>
         </section>
 
+        <!-- Multi-Format Code Export -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">8</span>
+                <div>
+                    <h2>Code & Hardware Export</h2>
+                    <p>Synthesizable hardware description and software logic functions.</p>
+                </div>
+            </div>
+            <div class="export-grid">
+                <div class="export-card">
+                    <div class="export-header">
+                        <span class="export-title">💻 Verilog HDL</span>
+                        <button type="button" class="export-btn" id="copyVerilogBtn">📋 Copy</button>
+                    </div>
+                    <pre class="export-preview" id="verilogPreview"></pre>
+                </div>
+                <div class="export-card">
+                    <div class="export-header">
+                        <span class="export-title">⚡ C / C++ / Python</span>
+                        <button type="button" class="export-btn" id="copyCodeBtn">📋 Copy</button>
+                    </div>
+                    <pre class="export-preview" id="codePreview"></pre>
+                </div>
+                <div class="export-card">
+                    <div class="export-header">
+                        <span class="export-title">📐 LaTeX Equation</span>
+                        <button type="button" class="export-btn" id="copyLatexBtn">📋 Copy</button>
+                    </div>
+                    <pre class="export-preview" id="latexPreview"></pre>
+                </div>
+            </div>
+        </section>
+
+        <!-- Basic Gate Circuit with Live Logic Probe & Zoom -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">9</span>
                 <div>
                     <h2>AND / OR / NOT Implementation</h2>
-                    <p>Implementation using basic logic gates.</p>
+                    <p>Schematic with live interactive logic probes and signal propagation.</p>
+                </div>
+            </div>
+            <div class="circuit-header-row">
+                <div class="circuit-probe-panel" id="probePanelBasic">
+                    <span class="probe-label">⚡ Live Probe:</span>
+                    <div class="probe-switch-group" id="probeSwitchesBasic"></div>
+                </div>
+                <div class="circuit-toolbar">
+                    <button type="button" class="tool-btn zoom-in-btn" data-target="basicCircuit" title="Zoom In">🔍+</button>
+                    <button type="button" class="tool-btn zoom-out-btn" data-target="basicCircuit" title="Zoom Out">🔍−</button>
+                    <button type="button" class="tool-btn zoom-reset-btn" data-target="basicCircuit" title="Reset Zoom">↺ Reset</button>
                 </div>
             </div>
             <div id="basicCircuit" class="circuit-container"></div>
         </section>
 
+        <!-- NAND-Only Circuit -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">10</span>
                 <div>
                     <h2>NAND-Only Implementation</h2>
-                    <p>Implementation using only NAND gates.</p>
+                    <p>Universal NAND gate implementation.</p>
+                </div>
+            </div>
+            <div class="circuit-header-row">
+                <div class="circuit-probe-panel" id="probePanelNand">
+                    <span class="probe-label">⚡ Live Probe:</span>
+                    <div class="probe-switch-group" id="probeSwitchesNand"></div>
+                </div>
+                <div class="circuit-toolbar">
+                    <button type="button" class="tool-btn zoom-in-btn" data-target="nandCircuit" title="Zoom In">🔍+</button>
+                    <button type="button" class="tool-btn zoom-out-btn" data-target="nandCircuit" title="Zoom Out">🔍−</button>
+                    <button type="button" class="tool-btn zoom-reset-btn" data-target="nandCircuit" title="Reset Zoom">↺ Reset</button>
                 </div>
             </div>
             <div id="nandCircuit" class="circuit-container"></div>
         </section>
 
+        <!-- NOR-Only Circuit -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">11</span>
                 <div>
                     <h2>NOR-Only Implementation</h2>
-                    <p>Implementation using only NOR gates.</p>
+                    <p>Universal NOR gate implementation.</p>
+                </div>
+            </div>
+            <div class="circuit-header-row">
+                <div class="circuit-probe-panel" id="probePanelNor">
+                    <span class="probe-label">⚡ Live Probe:</span>
+                    <div class="probe-switch-group" id="probeSwitchesNor"></div>
+                </div>
+                <div class="circuit-toolbar">
+                    <button type="button" class="tool-btn zoom-in-btn" data-target="norCircuit" title="Zoom In">🔍+</button>
+                    <button type="button" class="tool-btn zoom-out-btn" data-target="norCircuit" title="Zoom Out">🔍−</button>
+                    <button type="button" class="tool-btn zoom-reset-btn" data-target="norCircuit" title="Reset Zoom">↺ Reset</button>
                 </div>
             </div>
             <div id="norCircuit" class="circuit-container"></div>
         </section>
 
+        <!-- Verification -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">12</span>
                 <div>
                     <h2>Circuit Verification</h2>
-                    <p>All implementations are checked for every possible input combination.</p>
+                    <p>All implementations verified against truth table for all possible states.</p>
                 </div>
             </div>
             <div id="verification" class="verification-container"></div>
@@ -268,8 +406,8 @@
 
 <footer class="site-footer">
     <h3>Boolean Logic Solver</h3>
-    <p>Digital Circuits Project</p>
-    <p class="footer-small">Truth Tables • Boolean Simplification • Logic Circuits</p>
+    <p>Digital Circuits Suite</p>
+    <p class="footer-small">Designed for High-Precision Logic Minimization</p>
 </footer>
 
 <script src="script.js"></script>
