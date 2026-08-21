@@ -1,3 +1,4 @@
+"use strict";
 /* =========================================================
    BOOLEAN LOGIC SOLVER - STUDIO ENGINE
    - Standard schematic gate geometry (AND, OR, NOT, NAND, NOR)
@@ -18,6 +19,10 @@ const mintermSection = document.getElementById("mintermSection");
 const maxtermSection = document.getElementById("maxtermSection");
 const dontCareSection = document.getElementById("dontCareSection");
 const truthTableSection = document.getElementById("truthTableSection");
+const wordProblemSection = document.getElementById("wordProblemSection");
+const problemStatementInput = document.getElementById("problemStatement");
+const wordProblemStatus = document.getElementById("wordProblemStatus");
+const wordProblemLegend = document.getElementById("wordProblemLegend");
 const expressionInput = document.getElementById("expression");
 const mintermVariables = document.getElementById("mintermVariables");
 const maxtermVariables = document.getElementById("maxtermVariables");
@@ -148,6 +153,11 @@ function clearResults() {
     const dontCareResults = document.getElementById("dontCareResults");
     if (dontCareResults)
         dontCareResults.classList.add("hidden");
+    wordProblemStatus.textContent = "";
+    wordProblemStatus.classList.add("hidden");
+    wordProblemStatus.classList.remove("status-error");
+    wordProblemLegend.textContent = "";
+    wordProblemLegend.classList.add("hidden");
     document.getElementById("originalExpression").textContent = "";
     document.getElementById("generatedTruthTable").innerHTML = "";
     document.getElementById("canonicalSOP").textContent = "";
@@ -166,6 +176,7 @@ function updateInputInterface() {
     maxtermSection.classList.toggle("hidden", type !== "maxterms");
     dontCareSection.classList.toggle("hidden", type !== "dontCare");
     truthTableSection.classList.toggle("hidden", type !== "truthTable");
+    wordProblemSection.classList.toggle("hidden", type !== "wordProblem");
     clearResults();
 }
 inputType.addEventListener("change", () => {
@@ -279,36 +290,40 @@ class Parser {
         return node;
     }
     parseOR() {
+        var _a;
         let node = this.parseXOR();
-        while (this.peek()?.type === "OR") {
+        while (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "OR") {
             this.get();
             node = { type: "OR", left: node, right: this.parseXOR() };
         }
         return node;
     }
     parseXOR() {
+        var _a;
         let node = this.parseAND();
-        while (this.peek()?.type === "XOR") {
+        while (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "XOR") {
             this.get();
             node = { type: "XOR", left: node, right: this.parseAND() };
         }
         return node;
     }
     parseAND() {
+        var _a;
         let node = this.parseUnary();
-        while (this.peek()?.type === "AND") {
+        while (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "AND") {
             this.get();
             node = { type: "AND", left: node, right: this.parseUnary() };
         }
         return node;
     }
     parseUnary() {
-        if (this.peek()?.type === "NOT") {
+        var _a, _b;
+        if (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "NOT") {
             this.get();
             return { type: "NOT", child: this.parseUnary() };
         }
         let node = this.parsePrimary();
-        while (this.peek()?.type === "POSTFIX_NOT") {
+        while (((_b = this.peek()) === null || _b === void 0 ? void 0 : _b.type) === "POSTFIX_NOT") {
             this.get();
             node = { type: "NOT", child: node };
         }
@@ -331,8 +346,9 @@ class Parser {
     }
 }
 function evaluateAST(node, assignment) {
+    var _a;
     switch (node.type) {
-        case "VARIABLE": return assignment[node.name] ?? false;
+        case "VARIABLE": return (_a = assignment[node.name]) !== null && _a !== void 0 ? _a : false;
         case "NOT": return !evaluateAST(node.child, assignment);
         case "AND": return evaluateAST(node.left, assignment) && evaluateAST(node.right, assignment);
         case "OR": return evaluateAST(node.left, assignment) || evaluateAST(node.right, assignment);
@@ -586,7 +602,7 @@ function minimizeSOP(minterms, variables, dontCares) {
     if (minterms.length === 0)
         return { expression: "0", implicants: [] };
     const allTerms = dontCares ? [...minterms, ...dontCares] : minterms;
-    if (minterms.length + (dontCares?.size || 0) === (1 << variables.length)) {
+    if (minterms.length + ((dontCares === null || dontCares === void 0 ? void 0 : dontCares.size) || 0) === (1 << variables.length)) {
         return { expression: "1", implicants: [{ pattern: "-".repeat(variables.length) }] };
     }
     const primes = getPrimeImplicants(allTerms, variables.length);
@@ -597,7 +613,7 @@ function minimizePOS(zeros, variables, dontCares) {
     if (zeros.length === 0)
         return { expression: "1", implicants: [] };
     const allTerms = dontCares ? [...zeros, ...dontCares] : zeros;
-    if (zeros.length + (dontCares?.size || 0) === (1 << variables.length)) {
+    if (zeros.length + ((dontCares === null || dontCares === void 0 ? void 0 : dontCares.size) || 0) === (1 << variables.length)) {
         return { expression: "0", implicants: [{ pattern: "-".repeat(variables.length) }] };
     }
     const primes = getPrimeImplicants(allTerms, variables.length);
@@ -764,6 +780,7 @@ function buildNORCircuit(implicants, variables) {
 function evaluateCircuit(graph, assignment) {
     const memo = new Map();
     function evaluateNode(id) {
+        var _a;
         if (memo.has(id))
             return memo.get(id);
         const node = graph.nodes.find(n => n.id === id);
@@ -772,7 +789,7 @@ function evaluateCircuit(graph, assignment) {
         let result = false;
         switch (node.type) {
             case "INPUT":
-                result = assignment[node.label] ?? false;
+                result = (_a = assignment[node.label]) !== null && _a !== void 0 ? _a : false;
                 break;
             case "CONST":
                 result = node.label === "1";
@@ -801,6 +818,7 @@ function evaluateCircuit(graph, assignment) {
 function evaluateAllNodeValues(graph, assignment) {
     const nodeValues = new Map();
     function evalNode(id) {
+        var _a;
         if (nodeValues.has(id))
             return nodeValues.get(id);
         const node = graph.nodes.find(n => n.id === id);
@@ -809,7 +827,7 @@ function evaluateAllNodeValues(graph, assignment) {
         let val = false;
         switch (node.type) {
             case "INPUT":
-                val = assignment[node.label] ?? false;
+                val = (_a = assignment[node.label]) !== null && _a !== void 0 ? _a : false;
                 break;
             case "CONST":
                 val = node.label === "1";
@@ -1516,6 +1534,7 @@ function patternToMinterms(pattern, variableCount) {
     return result;
 }
 function generateKarnaughMap(variables, rows, dontCares, implicants) {
+    var _a;
     const variableCount = variables.length;
     if (variableCount < 2 || variableCount > 4) {
         return `<div class="help-text" style="text-align:center;">Karnaugh maps are displayed for 2 to 4 variables.</div>`;
@@ -1583,7 +1602,7 @@ function generateKarnaughMap(variables, rows, dontCares, implicants) {
         html += `<tr><th>${rowLabels[ri]}</th>`;
         for (let ci = 0; ci < colGray.length; ci++) {
             const minterm = grid[ri][ci];
-            const output = rows[minterm]?.output;
+            const output = (_a = rows[minterm]) === null || _a === void 0 ? void 0 : _a.output;
             let cellClass = "km-zero";
             let cellValue = "0";
             if (output === 1) {
@@ -1628,9 +1647,10 @@ function positionKarnaughOverlays(implicants, variableCount) {
         let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
         const cellData = table.querySelectorAll("td[data-row]");
         cellData.forEach(cell => {
+            var _a;
             const row = parseInt(cell.getAttribute("data-row") || "-1");
             const col = parseInt(cell.getAttribute("data-col") || "-1");
-            const mintermText = cell.querySelector(".km-minterm")?.textContent || "";
+            const mintermText = ((_a = cell.querySelector(".km-minterm")) === null || _a === void 0 ? void 0 : _a.textContent) || "";
             const m = parseInt(mintermText.replace("m", ""));
             if (!isNaN(m) && minterms.includes(m)) {
                 if (row < minRow)
@@ -1731,8 +1751,84 @@ function clearError() {
 /* =========================================================
    MAIN SOLVER EXECUTION
 ========================================================= */
-solveButton.addEventListener("click", solve);
-function solve() {
+solveButton.addEventListener("click", () => {
+    void solve();
+});
+/* =========================================================
+   WORD PROBLEM (AI) INPUT
+========================================================= */
+// Point this at your deployed FastAPI backend (bolean_backend.py).
+// Never call the Gemini API directly from the browser - the key
+// must stay server-side.
+const BOOLEAN_API_BASE = "http://localhost:8000";
+function setWordProblemStatus(message, isError = false) {
+    wordProblemStatus.textContent = message;
+    wordProblemStatus.classList.remove("hidden");
+    wordProblemStatus.classList.toggle("status-error", isError);
+}
+function clearWordProblemStatus() {
+    wordProblemStatus.textContent = "";
+    wordProblemStatus.classList.add("hidden");
+    wordProblemStatus.classList.remove("status-error");
+}
+function showWordProblemLegend(variables, descriptions) {
+    if (!descriptions || Object.keys(descriptions).length === 0) {
+        wordProblemLegend.classList.add("hidden");
+        wordProblemLegend.innerHTML = "";
+        return;
+    }
+    const items = variables
+        .map(name => { var _a; return `<strong>${name}</strong> = ${(_a = descriptions[name]) !== null && _a !== void 0 ? _a : "(no description)"}`; })
+        .join("<br>");
+    wordProblemLegend.innerHTML = items;
+    wordProblemLegend.classList.remove("hidden");
+}
+async function fetchMintermsFromProblem(problemStatement) {
+    const response = await fetch(`${BOOLEAN_API_BASE}/api/solve-boolean`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ problem_statement: problemStatement })
+    });
+    if (!response.ok) {
+        let detail = `Request failed (${response.status})`;
+        try {
+            const body = await response.json();
+            if (body && body.detail)
+                detail = body.detail;
+        }
+        catch (_a) {
+            // ignore - use default message
+        }
+        throw new Error(detail);
+    }
+    const data = await response.json();
+    return {
+        variables: Array.isArray(data.variables) ? data.variables : [],
+        minterms: Array.isArray(data.minterms) ? data.minterms : [],
+        dontCares: Array.isArray(data.dont_cares) ? data.dont_cares : [],
+        variableDescriptions: data.variable_descriptions
+    };
+}
+// Same term-building logic as mintermsToExpression, but labels each bit with
+// the backend's actual variable name instead of always A, B, C... - so the
+// displayed expression matches the truth table headers for word problems
+// where Gemini preserved names like F, H, M, D from the original problem.
+function mintermsToExpressionWithNames(minterms, variables, dontCares) {
+    const variableCount = variables.length;
+    if (minterms.length === 0)
+        return "0";
+    if (minterms.length === 1 << variableCount)
+        return "1";
+    return minterms.map(m => {
+        let term = "";
+        for (let i = 0; i < variableCount; i++) {
+            const bit = (m >> (variableCount - 1 - i)) & 1;
+            term += bit ? variables[i] : `${variables[i]}'`;
+        }
+        return term;
+    }).join(" + ");
+}
+async function solve() {
     clearError();
     circuitCounter = 0;
     if (window.StudioFX)
@@ -1743,7 +1839,47 @@ function solve() {
         let rows;
         let dontCares = new Set();
         let hasDontCares = false;
-        if (inputType.value === "expression") {
+        if (inputType.value === "wordProblem") {
+            const problemStatement = problemStatementInput.value.trim();
+            if (!problemStatement)
+                throw new Error("Please describe the boolean logic problem.");
+            clearWordProblemStatus();
+            wordProblemLegend.classList.add("hidden");
+            setWordProblemStatus("Asking the AI backend to work out the minterms...");
+            solveButton.disabled = true;
+            let parsed;
+            try {
+                parsed = await fetchMintermsFromProblem(problemStatement);
+            }
+            catch (fetchError) {
+                const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+                setWordProblemStatus(`Couldn't solve that problem: ${message}`, true);
+                throw new Error("AI conversion failed - see message above.");
+            }
+            finally {
+                solveButton.disabled = false;
+            }
+            if (parsed.variables.length === 0)
+                throw new Error("The AI backend couldn't identify any variables in that problem.");
+            variables = parsed.variables;
+            dontCares = new Set(parsed.dontCares);
+            hasDontCares = dontCares.size > 0;
+            expression = mintermsToExpressionWithNames(parsed.minterms, variables, dontCares);
+            const combinations = generateCombinations(variables.length);
+            rows = combinations.map((inputs, index) => {
+                let output;
+                if (parsed.minterms.includes(index))
+                    output = 1;
+                else if (dontCares.has(index))
+                    output = -1;
+                else
+                    output = 0;
+                return { inputs, output };
+            });
+            clearWordProblemStatus();
+            showWordProblemLegend(variables, parsed.variableDescriptions);
+        }
+        else if (inputType.value === "expression") {
             expression = expressionInput.value.trim();
             if (!expression)
                 throw new Error("Please enter a Boolean expression.");
@@ -1899,13 +2035,14 @@ if (tryExampleBtn) {
 ========================================================= */
 document.querySelectorAll(".copy-btn").forEach(button => {
     button.addEventListener("click", () => {
+        var _a;
         const expressionRow = button.closest(".expression-row");
         if (!expressionRow)
             return;
         const box = expressionRow.querySelector(".expression-box");
         if (!box)
             return;
-        const text = box.textContent?.trim();
+        const text = (_a = box.textContent) === null || _a === void 0 ? void 0 : _a.trim();
         if (!text)
             return;
         copyToClipboard(text, button);

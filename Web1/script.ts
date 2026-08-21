@@ -107,6 +107,10 @@ const mintermSection = document.getElementById("mintermSection") as HTMLElement;
 const maxtermSection = document.getElementById("maxtermSection") as HTMLElement;
 const dontCareSection = document.getElementById("dontCareSection") as HTMLElement;
 const truthTableSection = document.getElementById("truthTableSection") as HTMLElement;
+const wordProblemSection = document.getElementById("wordProblemSection") as HTMLElement;
+const problemStatementInput = document.getElementById("problemStatement") as HTMLTextAreaElement;
+const wordProblemStatus = document.getElementById("wordProblemStatus") as HTMLElement;
+const wordProblemLegend = document.getElementById("wordProblemLegend") as HTMLElement;
 
 const expressionInput = document.getElementById("expression") as HTMLInputElement;
 const mintermVariables = document.getElementById("mintermVariables") as HTMLSelectElement;
@@ -264,6 +268,11 @@ function clearResults(): void {
     results.classList.add("hidden");
     const dontCareResults = document.getElementById("dontCareResults");
     if (dontCareResults) dontCareResults.classList.add("hidden");
+    wordProblemStatus.textContent = "";
+    wordProblemStatus.classList.add("hidden");
+    wordProblemStatus.classList.remove("status-error");
+    wordProblemLegend.textContent = "";
+    wordProblemLegend.classList.add("hidden");
     (document.getElementById("originalExpression") as HTMLElement).textContent = "";
     (document.getElementById("generatedTruthTable") as HTMLElement).innerHTML = "";
     (document.getElementById("canonicalSOP") as HTMLElement).textContent = "";
@@ -283,6 +292,7 @@ function updateInputInterface(): void {
     maxtermSection.classList.toggle("hidden", type !== "maxterms");
     dontCareSection.classList.toggle("hidden", type !== "dontCare");
     truthTableSection.classList.toggle("hidden", type !== "truthTable");
+    wordProblemSection.classList.toggle("hidden", type !== "wordProblem");
     clearResults();
 }
 
@@ -1918,9 +1928,98 @@ function clearError(): void {
    MAIN SOLVER EXECUTION
 ========================================================= */
 
-solveButton.addEventListener("click", solve);
+solveButton.addEventListener("click", () => {
+    void solve();
+});
 
-function solve(): void {
+/* =========================================================
+   WORD PROBLEM (AI) INPUT
+========================================================= */
+
+// Point this at your deployed FastAPI backend (bolean_backend.py).
+// Never call the Gemini API directly from the browser - the key
+// must stay server-side.
+const BOOLEAN_API_BASE = "http://localhost:8000";
+
+interface WordProblemResult {
+    variables: string[];
+    minterms: number[];
+    dontCares: number[];
+    variableDescriptions?: Record<string, string>;
+}
+
+function setWordProblemStatus(message: string, isError = false): void {
+    wordProblemStatus.textContent = message;
+    wordProblemStatus.classList.remove("hidden");
+    wordProblemStatus.classList.toggle("status-error", isError);
+}
+
+function clearWordProblemStatus(): void {
+    wordProblemStatus.textContent = "";
+    wordProblemStatus.classList.add("hidden");
+    wordProblemStatus.classList.remove("status-error");
+}
+
+function showWordProblemLegend(variables: string[], descriptions?: Record<string, string>): void {
+    if (!descriptions || Object.keys(descriptions).length === 0) {
+        wordProblemLegend.classList.add("hidden");
+        wordProblemLegend.innerHTML = "";
+        return;
+    }
+    const items = variables
+        .map(name => `<strong>${name}</strong> = ${descriptions[name] ?? "(no description)"}`)
+        .join("<br>");
+    wordProblemLegend.innerHTML = items;
+    wordProblemLegend.classList.remove("hidden");
+}
+
+async function fetchMintermsFromProblem(problemStatement: string): Promise<WordProblemResult> {
+    const response = await fetch(`${BOOLEAN_API_BASE}/api/solve-boolean`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ problem_statement: problemStatement })
+    });
+
+    if (!response.ok) {
+        let detail = `Request failed (${response.status})`;
+        try {
+            const body = await response.json();
+            if (body && body.detail) detail = body.detail;
+        } catch {
+            // ignore - use default message
+        }
+        throw new Error(detail);
+    }
+
+    const data = await response.json();
+    return {
+        variables: Array.isArray(data.variables) ? data.variables : [],
+        minterms: Array.isArray(data.minterms) ? data.minterms : [],
+        dontCares: Array.isArray(data.dont_cares) ? data.dont_cares : [],
+        variableDescriptions: data.variable_descriptions
+    };
+}
+
+// Same term-building logic as mintermsToExpression, but labels each bit with
+// the backend's actual variable name instead of always A, B, C... - so the
+// displayed expression matches the truth table headers for word problems
+// where Gemini preserved names like F, H, M, D from the original problem.
+function mintermsToExpressionWithNames(minterms: number[], variables: string[], dontCares?: Set<number>): string {
+    const variableCount = variables.length;
+    if (minterms.length === 0) return "0";
+    if (minterms.length === 1 << variableCount) return "1";
+
+    return minterms.map(m => {
+        let term = "";
+        for (let i = 0; i < variableCount; i++) {
+            const bit = (m >> (variableCount - 1 - i)) & 1;
+            term += bit ? variables[i] : `${variables[i]}'`;
+        }
+        return term;
+    }).join(" + ");
+}
+
+async function solve(): Promise<void> {
     clearError();
     circuitCounter = 0;
     if (window.StudioFX) window.StudioFX.relay();
@@ -1932,7 +2031,46 @@ function solve(): void {
         let dontCares: Set<number> = new Set();
         let hasDontCares = false;
 
-        if (inputType.value === "expression") {
+        if (inputType.value === "wordProblem") {
+            const problemStatement = problemStatementInput.value.trim();
+            if (!problemStatement) throw new Error("Please describe the boolean logic problem.");
+
+            clearWordProblemStatus();
+            wordProblemLegend.classList.add("hidden");
+            setWordProblemStatus("Asking the AI backend to work out the minterms...");
+            solveButton.disabled = true;
+
+            let parsed: WordProblemResult;
+            try {
+                parsed = await fetchMintermsFromProblem(problemStatement);
+            } catch (fetchError) {
+                const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
+                setWordProblemStatus(`Couldn't solve that problem: ${message}`, true);
+                throw new Error("AI conversion failed - see message above.");
+            } finally {
+                solveButton.disabled = false;
+            }
+
+            if (parsed.variables.length === 0) throw new Error("The AI backend couldn't identify any variables in that problem.");
+
+            variables = parsed.variables;
+            dontCares = new Set(parsed.dontCares);
+            hasDontCares = dontCares.size > 0;
+
+            expression = mintermsToExpressionWithNames(parsed.minterms, variables, dontCares);
+
+            const combinations = generateCombinations(variables.length);
+            rows = combinations.map((inputs, index) => {
+                let output: number;
+                if (parsed.minterms.includes(index)) output = 1;
+                else if (dontCares.has(index)) output = -1;
+                else output = 0;
+                return { inputs, output };
+            });
+
+            clearWordProblemStatus();
+            showWordProblemLegend(variables, parsed.variableDescriptions);
+        } else if (inputType.value === "expression") {
             expression = expressionInput.value.trim();
             if (!expression) throw new Error("Please enter a Boolean expression.");
             variables = getVariables(expression);

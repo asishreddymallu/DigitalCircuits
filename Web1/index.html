@@ -70,6 +70,7 @@
                 <option value="maxterms">Maxterms (ΠM)</option>
                 <option value="dontCare">Minterms + Don't Cares (Σm + d)</option>
                 <option value="truthTable">Truth Table</option>
+                <option value="wordProblem">Word Problem (AI)</option>
             </select>
         </div>
 
@@ -152,6 +153,19 @@
         </div>
 
         <!-- Truth Table Manual Input -->
+        <!-- Word Problem (AI) Input -->
+        <div id="wordProblemSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label for="problemStatement">Describe the Problem</label>
+                <textarea id="problemStatement" rows="4" placeholder="Example: A laboratory door opens when the identity card and PIN are both valid, or when emergency mode is active and either the PIN is correct or faculty authorization is present."></textarea>
+                <div class="help-text">
+                    Describe the logic in plain English, using variable names if you have them. When you press Solve, this is sent to an AI backend that identifies the variables and works out the minterms for you.
+                </div>
+            </div>
+            <div id="wordProblemStatus" class="help-text word-problem-status hidden"></div>
+            <div id="wordProblemLegend" class="word-problem-legend hidden"></div>
+        </div>
+
         <div id="truthTableSection" class="input-subsection hidden">
             <div class="form-group">
                 <label for="truthVariables">Number of Variables</label>

@@ -1,3 +1,19 @@
+# --- Python / backend ---
+venv/
+.venv/
+__pycache__/
+*.pyc
+.env
+.env.*
+!.env.example
+
+# --- Node / frontend build ---
 node_modules/
-dist/
-*.swp
+
+# --- Editor / OS ---
+.vscode/
+.DS_Store
+Thumbs.db
+
+# --- Logs ---
+*.log
