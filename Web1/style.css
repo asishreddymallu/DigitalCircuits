@@ -506,7 +506,7 @@ body::before {
 
 .expression-row {
     display: flex;
-    align-items: center;
+    align-items: flex-start;
     gap: 12px;
 }
 
@@ -520,8 +520,8 @@ body::before {
     font-size: 16px;
     font-weight: 700;
     color: var(--text-primary);
-    overflow-x: auto;
-    white-space: pre;
+    overflow-wrap: anywhere;
+    white-space: pre-wrap;
 }
 
 .simplified-expression {
