@@ -1,20 +1,21 @@
 # ============================================================
-# Boolean Logic AI Backend
+# Boolean Logic AI Backend - Improved Version
 #
 # Install:
-# pip install fastapi uvicorn google-genai python-dotenv
+#   pip install fastapi uvicorn google-genai python-dotenv
 #
 # Run:
-# uvicorn boolean_solver_backend:app --reload
+#   uvicorn backend:app --reload
 #
 # API:
-# POST /api/solve-boolean
+#   POST /api/solve-boolean
 # ============================================================
 
 import ast
 import json
 import os
 import re
+from typing import Any
 
 from fastapi import FastAPI, HTTPException
 from fastapi.middleware.cors import CORSMiddleware
@@ -32,7 +33,10 @@ from dotenv import load_dotenv
 
 load_dotenv()
 
-app = FastAPI()
+app = FastAPI(
+    title="Boolean Logic AI Backend",
+    version="2.0"
+)
 
 
 # ============================================================
@@ -61,7 +65,15 @@ if not api_key:
 
 client = genai.Client(api_key=api_key)
 
-MODEL = "gemini-3.5-flash-lite"
+# Gemini 3.7 Flash is currently Google's latest Flash model
+# for complex reasoning / multi-step tasks.
+MODEL = "gemini-3.7-flash"
+
+# Your website currently works comfortably with small
+# digital-logic problems.
+MAX_VARIABLES = 6
+
+ALLOWED_VARIABLES = ["A", "B", "C", "D", "E", "F"]
 
 
 # ============================================================
@@ -78,23 +90,19 @@ class ProblemRequest(BaseModel):
 
 def parse_explicit_minterms(problem_statement: str):
     """
-    Detect whether the user has already supplied minterms.
+    Detect whether the user directly supplied minterms.
 
-    Examples supported:
+    Supported examples:
 
         F(A,B,C,D) = Σm(1,3,5,7)
-
         F(A,B,C,D) = ∑m(1,3,5,7)
-
         F(A,B,C,D) = Σ m(1,3,5,7)
-
         F(A,B,C,D) = sum m(1,3,5,7)
 
-    With don't-cares:
+    Don't-care examples:
 
+        F(A,B,C,D) = Σm(1,3,5) + Σd(2,6)
         d(A,B,C,D) = Σd(2,6)
-
-        d(A,B,C,D) = ∑d(2,6)
 
     If explicit minterms are found, Gemini is NOT called.
     """
@@ -102,15 +110,16 @@ def parse_explicit_minterms(problem_statement: str):
     text = problem_statement.strip()
 
     # --------------------------------------------------------
-    # Find the main function variable list.
+    # Find variable list.
     #
-    # Example:
+    # Prefer:
+    #   F(A,B,C,D)
     #
-    # F(C,B,K,S,E)
+    # Fallback:
+    #   d(A,B,C,D)
     #
-    # gives:
-    #
-    # ["C", "B", "K", "S", "E"]
+    # The latter is useful for problems written only in
+    # terms of don't-care notation.
     # --------------------------------------------------------
 
     variable_match = re.search(
@@ -121,11 +130,22 @@ def parse_explicit_minterms(problem_statement: str):
         text
     )
 
-    # If the above doesn't find it, try anywhere in the text.
     if not variable_match:
 
         variable_match = re.search(
             r"[Ff]\s*\(\s*"
+            r"([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*"
+            r"[A-Za-z][A-Za-z0-9_]*)*)"
+            r"\s*\)",
+            text
+        )
+
+    # Fallback for:
+    # d(A,B,C,D) = Σd(...)
+    if not variable_match:
+
+        variable_match = re.search(
+            r"(?:^|\n)\s*[Dd]\s*\(\s*"
             r"([A-Za-z][A-Za-z0-9_]*(?:\s*,\s*"
             r"[A-Za-z][A-Za-z0-9_]*)*)"
             r"\s*\)",
@@ -142,10 +162,6 @@ def parse_explicit_minterms(problem_statement: str):
 
     # --------------------------------------------------------
     # Find Σm / ∑m / Σ m / ∑ m / sum m
-    #
-    # Example:
-    #
-    # Σm(12,16,18)
     # --------------------------------------------------------
 
     minterm_match = re.search(
@@ -154,10 +170,6 @@ def parse_explicit_minterms(problem_statement: str):
         text,
         flags=re.IGNORECASE
     )
-
-    # Also support ASCII:
-    #
-    # sum m(1,2,3)
 
     if not minterm_match:
 
@@ -168,7 +180,20 @@ def parse_explicit_minterms(problem_statement: str):
             flags=re.IGNORECASE
         )
 
-    # No explicit minterms means this is probably a word problem.
+    if not minterm_match:
+
+        # Another common form:
+        #
+        # m(1,3,5,7)
+        #
+        minterm_match = re.search(
+            r"\bm\s*"
+            r"\(\s*([0-9,\s]+)\s*\)",
+            text,
+            flags=re.IGNORECASE
+        )
+
+    # No explicit minterms -> natural-language problem.
     if not minterm_match:
         return None
 
@@ -180,12 +205,6 @@ def parse_explicit_minterms(problem_statement: str):
 
     # --------------------------------------------------------
     # Find don't-care terms.
-    #
-    # Examples:
-    #
-    # Σd(13,17,21)
-    # ∑d(13,17,21)
-    # Σ d(13,17,21)
     # --------------------------------------------------------
 
     dont_care_match = re.search(
@@ -195,14 +214,19 @@ def parse_explicit_minterms(problem_statement: str):
         flags=re.IGNORECASE
     )
 
-    # Also support:
-    #
-    # sum d(1,2,3)
-
     if not dont_care_match:
 
         dont_care_match = re.search(
             r"\bsum\s*d\s*"
+            r"\(\s*([0-9,\s]+)\s*\)",
+            text,
+            flags=re.IGNORECASE
+        )
+
+    if not dont_care_match:
+
+        dont_care_match = re.search(
+            r"\bd\s*"
             r"\(\s*([0-9,\s]+)\s*\)",
             text,
             flags=re.IGNORECASE
@@ -221,12 +245,31 @@ def parse_explicit_minterms(problem_statement: str):
         dont_cares = []
 
     # --------------------------------------------------------
-    # Validate indices.
+    # Validate variable count.
     # --------------------------------------------------------
 
     number_of_variables = len(variables)
 
-    max_index = (2 ** number_of_variables) - 1
+    if number_of_variables == 0:
+
+        raise ValueError(
+            "No variables were identified."
+        )
+
+    if number_of_variables > MAX_VARIABLES:
+
+        raise ValueError(
+            f"Maximum supported variables: "
+            f"{MAX_VARIABLES}."
+        )
+
+    # --------------------------------------------------------
+    # Validate minterm range.
+    # --------------------------------------------------------
+
+    max_index = (
+        2 ** number_of_variables
+    ) - 1
 
     invalid_minterms = [
         value
@@ -243,9 +286,10 @@ def parse_explicit_minterms(problem_statement: str):
     if invalid_minterms:
 
         raise ValueError(
-            f"Minterm index out of range: {invalid_minterms}. "
-            f"For {number_of_variables} variables, valid "
-            f"indices are 0 to {max_index}."
+            f"Minterm index out of range: "
+            f"{invalid_minterms}. "
+            f"For {number_of_variables} variables, "
+            f"valid indices are 0 to {max_index}."
         )
 
     if invalid_dont_cares:
@@ -253,28 +297,24 @@ def parse_explicit_minterms(problem_statement: str):
         raise ValueError(
             f"Don't-care index out of range: "
             f"{invalid_dont_cares}. "
-            f"For {number_of_variables} variables, valid "
-            f"indices are 0 to {max_index}."
+            f"For {number_of_variables} variables, "
+            f"valid indices are 0 to {max_index}."
         )
 
     # --------------------------------------------------------
-    # Remove duplicates and sort.
+    # Remove duplicates.
     # --------------------------------------------------------
 
     minterms = sorted(set(minterms))
 
     dont_cares = sorted(set(dont_cares))
 
-    # A value cannot be both a minterm and a don't-care.
+    # A value cannot be both minterm and don't-care.
     dont_cares = [
         value
         for value in dont_cares
         if value not in minterms
     ]
-
-    # --------------------------------------------------------
-    # Return direct result.
-    # --------------------------------------------------------
 
     return {
         "variables": variables,
@@ -284,7 +324,7 @@ def parse_explicit_minterms(problem_statement: str):
 
 
 # ============================================================
-# BUILD GEMINI PROMPT
+# BUILD PRIMARY GEMINI PROMPT
 # ============================================================
 
 def build_prompt(problem_statement: str) -> str:
@@ -292,153 +332,105 @@ def build_prompt(problem_statement: str) -> str:
     return f"""
 You are an expert Digital Logic Design and Boolean Algebra engine.
 
-Convert the natural-language problem below into ONE EXACT Boolean
-expression representing exactly when the output is 1.
+Your job is to translate the natural-language digital logic problem
+below into ONE EXACT Boolean expression representing exactly when
+the output is 1.
 
-The expression will be evaluated by Python for every possible input
-combination to generate the minterms. Therefore, correctness of the
-English interpretation is more important than making the expression
-short.
+The Boolean expression will be evaluated exhaustively by Python over
+all possible input combinations.
+
+Therefore:
+
+SEMANTIC CORRECTNESS IS MORE IMPORTANT THAN SIMPLIFICATION.
+
+============================================================
+1. VARIABLES
+============================================================
 
 IMPORTANT:
-Do not overfit to any example in these instructions.
-Examples are only explanations of how to reason about language.
-They are NOT rules about the actual problem.
 
-============================================================
-1. IDENTIFY VARIABLES
-============================================================
+Use ONLY single uppercase-letter variables:
 
-If the problem explicitly provides variable names, preserve them exactly.
+A, B, C, D, E, F
 
-Use the order in which the variables are introduced as the variable
-order for minterm numbering.
+Do NOT use multi-character variables.
+
+Example:
+
+Good:
+A = card is valid
+B = PIN is correct
+C = emergency mode is active
+
+Bad:
+CARD
+PIN
+MODE
+VALID_CARD
+
+Assign variables in the exact order in which concepts/signals are
+introduced in the problem.
 
 The first variable is the MSB.
 The last variable is the LSB.
 
-If variable names are not explicitly provided, assign A, B, C, D, ...
-in order of introduction.
+Maximum number of variables is 6.
+
+The variable_descriptions field must contain the meaning of each
+letter.
 
 ============================================================
-2. TRANSLATE EACH REQUIREMENT
+2. UNDERSTAND THE ENGLISH FIRST
 ============================================================
 
-Read the problem literally and translate each numbered or separate
-requirement independently before combining anything.
+Before producing the expression, internally determine:
 
-Pay attention to logical words such as:
+1. What each input means.
+2. What conditions activate the output.
+3. What conditions prevent the output.
+4. What conditions modify another condition.
+5. What exceptions are present.
 
-- and
-- or
-- either
-- both
-- at least
-- at most
-- exactly
+Do NOT assume unstated behavior.
+
+============================================================
+3. CONDITIONAL LOGIC
+============================================================
+
+Pay special attention to:
+
+- if
 - only if
 - only when
-- provided
 - unless
+- provided
+- except
 - regardless of
 - irrespective of
-- suppress
-- override
-- disable
-- except
+- but
+- however
 - still
+- override
+- suppress
+- disable
+- enable
 - during
 - while
-- if
-- when
 
-Do not invent requirements that are not stated.
+Do NOT simply OR all sentences together.
 
-============================================================
-3. CONDITIONAL REQUIREMENTS
-============================================================
-
-A later condition can restrict, modify, or replace a general condition
-under a particular circumstance.
-
-Do NOT simply OR every sentence together.
-
-When a requirement says that one rule changes when another input or
-condition is active, split the cases and apply the correct rule to
-each case.
-
-Generic example:
-
-"At least two of A, B and C are required, but when D is active,
-all three are required."
-
-Interpret it as:
-
-D = 0:
-    (A AND B) OR (A AND C) OR (B AND C)
-
-D = 1:
-    A AND B AND C
-
-Therefore:
-
-((NOT D) AND ((A AND B) OR (A AND C) OR (B AND C)))
-OR
-(D AND A AND B AND C)
-
-This is ONLY an example of conditional reasoning.
-Do not assume A, B, C, D or these rules exist in the actual problem.
+If a later rule modifies an earlier rule, perform case analysis
+internally and build the final expression accordingly.
 
 ============================================================
-4. CASE ANALYSIS
+4. COUNTING
 ============================================================
-
-For complicated wording, internally divide the problem into the
-relevant cases.
-
-For example, a condition may depend on:
-
-- a mode being active/inactive
-- a signal being high/low
-- a special condition being present/absent
-- an override being active/inactive
-
-Determine the output condition for each relevant case and combine
-those cases.
-
-Only create cases that are actually required by the wording.
-Do not invent unnecessary cases.
-
-============================================================
-5. OVERRIDES, SUPPRESSION AND EXCEPTIONS
-============================================================
-
-If the problem says that an override or mode suppresses something,
-determine exactly which condition it suppresses.
-
-Do NOT automatically apply the suppression to the entire output.
-
-If the problem contains an exception such as:
-
-"X suppresses A, but must not suppress B"
-
-then preserve B independently of X.
-
-Likewise, words such as "still", "except", "but", "however",
-"regardless", and "irrespective" can indicate that a previous rule
-has an exception.
-
-============================================================
-6. COUNTING CONDITIONS
-============================================================
-
-Translate counting phrases carefully.
 
 "At least two of A, B, C":
 
 (A AND B) OR (A AND C) OR (B AND C)
 
-"Exactly two of A, B, C":
+"Exactly two":
 
 (A AND B AND NOT C)
 OR
@@ -446,99 +438,135 @@ OR
 OR
 (NOT A AND B AND C)
 
-"All three":
-
-A AND B AND C
-
 "At least one":
 
 A OR B OR C
 
-Do not confuse "at least" with "exactly".
+"All":
+
+A AND B AND C
+
+Do not confuse "at least" and "exactly".
 
 ============================================================
-7. VARIABLE MEANINGS AND NEGATION
+5. OVERRIDES / SUPPRESSION
 ============================================================
 
-Respect the meaning assigned to every variable.
+If one signal suppresses another condition, apply suppression ONLY
+where the wording specifies it.
 
-If:
+Do not suppress unrelated conditions.
 
-T = temperature is high
+Words such as:
 
-then:
+- except
+- however
+- but
+- still
+- regardless
+- irrespective
 
-T     = temperature is high
-NOT T = temperature is not high
-
-If:
-
-M = maintenance mode is active
-
-then:
-
-M     = maintenance mode is active
-NOT M = maintenance mode is inactive
-
-Do not silently reverse or reinterpret variable meanings.
+often indicate that some previous rule remains active.
 
 ============================================================
-8. COMBINE THE RULES
-============================================================
-
-After translating the individual requirements and resolving all
-conditions, construct ONE Boolean expression for the output.
-
-The expression must describe the complete truth condition.
-
-Do not minimize it.
-
-Do not calculate minterms yourself.
-
-Do not use Quine-McCluskey.
-
-Do not use Karnaugh maps.
-
-Python will evaluate the expression for all input combinations.
-
-============================================================
-9. SELF-CHECK
-============================================================
-
-Before returning the expression, check it against the original
-English problem.
-
-Verify:
-
-1. Every activation condition is represented.
-2. Every restriction is enforced.
-3. Conditional rules apply only in their stated cases.
-4. Overrides affect only what they are stated to suppress.
-5. Explicit exceptions are preserved.
-6. No unstated assumptions were introduced.
-7. No valid condition was omitted.
-8. The variable names and variable order are correct.
-
-For complicated problems, mentally test representative combinations,
-especially boundary cases where two or more rules overlap.
-
-============================================================
-10. DON'T-CARE CONDITIONS
+6. DON'T-CARES
 ============================================================
 
 Only return don't-care conditions if the problem explicitly states
-that certain combinations are impossible, unused, irrelevant, or
-don't-care.
+that certain input combinations are:
 
-Otherwise return an empty list.
+- impossible
+- unused
+- irrelevant
+- unspecified
+- don't-care
+
+Otherwise return:
+
+[]
 
 ============================================================
-11. OUTPUT FORMAT
+7. EXPRESSION SYNTAX
+============================================================
+
+The expression MUST use only:
+
+A
+B
+C
+D
+E
+F
+
+and:
+
+AND
+OR
+NOT
+
+Use explicit parentheses.
+
+Examples:
+
+(A AND B)
+
+((A AND B) OR C)
+
+((NOT A) AND (B OR C))
+
+Do NOT use:
+
++
+*
+'
+&
+|
+!
+
+Do not minimize the expression.
+
+Do not calculate minterms yourself.
+
+============================================================
+8. SELF-CHECK
+============================================================
+
+Before returning your result, mentally test boundary cases.
+
+Specifically check:
+
+1. Every activation condition.
+2. Every restriction.
+3. Every exception.
+4. Every override.
+5. Every conditional rule.
+6. At least/exactly distinctions.
+7. Variable meanings.
+8. Variable ordering.
+
+============================================================
+9. SEMANTIC TEST CASES
+============================================================
+
+Return 3 to 8 representative test cases.
+
+These are NOT exhaustive truth-table rows.
+
+They should focus on difficult or ambiguous boundary cases.
+
+For each test case return:
+
+- inputs
+- expected_output
+- reason
+
+============================================================
+10. OUTPUT
 ============================================================
 
 Return ONLY valid JSON.
 
-Use exactly this structure:
+Use exactly:
 
 {{
     "variables": ["A", "B", "C"],
@@ -557,14 +585,25 @@ Use exactly this structure:
             "letter": "C",
             "description": "short description"
         }}
+    ],
+    "test_cases": [
+        {{
+            "inputs": {{
+                "A": 0,
+                "B": 0,
+                "C": 1
+            }},
+            "expected_output": 1,
+            "reason": "C directly activates the output"
+        }}
     ]
 }}
 
-Do not return Markdown.
-Do not return explanations outside the JSON.
+No Markdown.
+No explanation outside JSON.
 
 ============================================================
-PROBLEM TO SOLVE
+PROBLEM
 ============================================================
 
 {problem_statement.strip()}
@@ -572,15 +611,126 @@ PROBLEM TO SOLVE
 
 
 # ============================================================
-# CALL GEMINI
+# BUILD VERIFICATION PROMPT
+# ============================================================
+
+def build_verification_prompt(
+    problem_statement: str,
+    candidate: dict
+) -> str:
+
+    candidate_json = json.dumps(
+        candidate,
+        indent=2
+    )
+
+    return f"""
+You are a strict Digital Logic Design verifier.
+
+You are given:
+
+1. The original natural-language problem.
+2. A candidate Boolean solution produced by another AI.
+
+Your task is to determine whether the candidate exactly matches the
+meaning of the original problem.
+
+Do NOT accept a solution merely because it is internally consistent.
+
+You must compare the candidate against the ORIGINAL ENGLISH.
+
+============================================================
+RULES
+============================================================
+
+Use only these variables:
+
+A, B, C, D, E, F
+
+The candidate must preserve the meaning of each variable.
+
+Check carefully:
+
+- conditions
+- exceptions
+- overrides
+- suppression
+- "unless"
+- "only if"
+- "only when"
+- "at least"
+- "exactly"
+- "both"
+- "either"
+- "except"
+- "regardless"
+- "still"
+
+Do not simplify unless necessary.
+
+If the candidate is correct:
+
+    correct = true
+
+and:
+
+    corrected_expression = ""
+
+If it is incorrect:
+
+    correct = false
+
+and return a corrected expression.
+
+The corrected expression must use only:
+
+A B C D E F
+AND OR NOT
+parentheses
+
+============================================================
+OUTPUT
+============================================================
+
+Return ONLY JSON:
+
+{{
+    "correct": true,
+    "reason": "short explanation",
+    "corrected_expression": "",
+    "corrected_variables": ["A", "B", "C"],
+    "corrected_dont_care_conditions": []
+}}
+
+If a correction is needed, corrected_expression MUST contain the
+correct Boolean expression.
+
+============================================================
+ORIGINAL PROBLEM
+============================================================
+
+{problem_statement.strip()}
+
+============================================================
+CANDIDATE SOLUTION
+============================================================
+
+{candidate_json}
+"""
+
+
+# ============================================================
+# GEMINI PRIMARY CALL
 # ============================================================
 
 def call_gemini(prompt: str) -> dict:
 
     config = types.GenerateContentConfig(
 
+        # High reasoning is deliberate here because the difficult
+        # part of this application is semantic Boolean reasoning.
         thinking_config=types.ThinkingConfig(
-            thinking_level="MINIMAL"
+            thinking_level="HIGH"
         ),
 
         response_mime_type="application/json",
@@ -592,7 +742,6 @@ def call_gemini(prompt: str) -> dict:
 
                 "variables": genai.types.Schema(
                     type=genai.types.Type.ARRAY,
-
                     items=genai.types.Schema(
                         type=genai.types.Type.STRING
                     )
@@ -604,7 +753,6 @@ def call_gemini(prompt: str) -> dict:
 
                 "dont_care_conditions": genai.types.Schema(
                     type=genai.types.Type.ARRAY,
-
                     items=genai.types.Schema(
                         type=genai.types.Type.STRING
                     )
@@ -632,6 +780,38 @@ def call_gemini(prompt: str) -> dict:
                             "description"
                         ]
                     )
+                ),
+
+                "test_cases": genai.types.Schema(
+                    type=genai.types.Type.ARRAY,
+
+                    items=genai.types.Schema(
+                        type=genai.types.Type.OBJECT,
+
+                        properties={
+
+                            "inputs": genai.types.Schema(
+                                type=genai.types.Type.OBJECT,
+                                additional_properties=genai.types.Schema(
+                                    type=genai.types.Type.INTEGER
+                                )
+                            ),
+
+                            "expected_output": genai.types.Schema(
+                                type=genai.types.Type.INTEGER
+                            ),
+
+                            "reason": genai.types.Schema(
+                                type=genai.types.Type.STRING
+                            )
+                        },
+
+                        required=[
+                            "inputs",
+                            "expected_output",
+                            "reason"
+                        ]
+                    )
                 )
             },
 
@@ -639,7 +819,8 @@ def call_gemini(prompt: str) -> dict:
                 "variables",
                 "expression",
                 "dont_care_conditions",
-                "variable_descriptions"
+                "variable_descriptions",
+                "test_cases"
             ]
         )
     )
@@ -660,14 +841,83 @@ def call_gemini(prompt: str) -> dict:
 
 
 # ============================================================
+# GEMINI VERIFICATION CALL
+# ============================================================
+
+def call_gemini_verifier(prompt: str) -> dict:
+
+    config = types.GenerateContentConfig(
+
+        thinking_config=types.ThinkingConfig(
+            thinking_level="HIGH"
+        ),
+
+        response_mime_type="application/json",
+
+        response_schema=genai.types.Schema(
+            type=genai.types.Type.OBJECT,
+
+            properties={
+
+                "correct": genai.types.Schema(
+                    type=genai.types.Type.BOOLEAN
+                ),
+
+                "reason": genai.types.Schema(
+                    type=genai.types.Type.STRING
+                ),
+
+                "corrected_expression": genai.types.Schema(
+                    type=genai.types.Type.STRING
+                ),
+
+                "corrected_variables": genai.types.Schema(
+                    type=genai.types.Type.ARRAY,
+                    items=genai.types.Schema(
+                        type=genai.types.Type.STRING
+                    )
+                ),
+
+                "corrected_dont_care_conditions": genai.types.Schema(
+                    type=genai.types.Type.ARRAY,
+                    items=genai.types.Schema(
+                        type=genai.types.Type.STRING
+                    )
+                )
+            },
+
+            required=[
+                "correct",
+                "reason",
+                "corrected_expression",
+                "corrected_variables",
+                "corrected_dont_care_conditions"
+            ]
+        )
+    )
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=prompt,
+        config=config
+    )
+
+    if not response.text:
+
+        raise ValueError(
+            "Gemini verifier returned an empty response."
+        )
+
+    return json.loads(response.text)
+
+
+# ============================================================
 # NORMALIZE BOOLEAN EXPRESSION
 # ============================================================
 
 def normalize_expression(expression: str) -> str:
 
     expression = expression.strip()
-
-    # Convert Boolean operators to Python operators.
 
     expression = re.sub(
         r"\bAND\b",
@@ -691,6 +941,69 @@ def normalize_expression(expression: str) -> str:
     )
 
     return expression
+
+
+# ============================================================
+# VALIDATE BOOLEAN EXPRESSION TOKENS
+# ============================================================
+
+def validate_expression_syntax(
+    expression: str,
+    variables: list[str]
+) -> None:
+
+    if not expression or not expression.strip():
+
+        raise ValueError(
+            "Empty Boolean expression."
+        )
+
+    # Only allow the exact intended syntax.
+    allowed_pattern = re.compile(
+        r"""
+        ^
+        [\s()A-Za-z]+
+        $
+        """,
+        re.VERBOSE
+    )
+
+    if not allowed_pattern.fullmatch(expression):
+
+        raise ValueError(
+            "Expression contains unsupported characters."
+        )
+
+    # Extract words.
+    words = re.findall(
+        r"[A-Za-z]+",
+        expression
+    )
+
+    allowed_words = {
+        "AND",
+        "OR",
+        "NOT"
+    }
+
+    allowed_words.update(
+        variables
+    )
+
+    for word in words:
+
+        if word.upper() in {
+            "AND",
+            "OR",
+            "NOT"
+        }:
+            continue
+
+        if word not in variables:
+
+            raise ValueError(
+                f"Unknown token '{word}' in Boolean expression."
+            )
 
 
 # ============================================================
@@ -747,8 +1060,7 @@ def evaluate_boolean_expression(
             if node.id not in values:
 
                 raise ValueError(
-                    f"Unknown variable '{node.id}' "
-                    f"in expression."
+                    f"Unknown variable '{node.id}'."
                 )
 
             return bool(
@@ -756,53 +1068,52 @@ def evaluate_boolean_expression(
             )
 
         # ----------------------------------------------------
-        # AND
+        # AND / OR
         # ----------------------------------------------------
 
-        if (
-            isinstance(node, ast.BoolOp)
-            and isinstance(node.op, ast.And)
+        if isinstance(
+            node,
+            ast.BoolOp
         ):
 
-            return all(
-                evaluate(value)
-                for value in node.values
-            )
+            if isinstance(
+                node.op,
+                ast.And
+            ):
 
-        # ----------------------------------------------------
-        # OR
-        # ----------------------------------------------------
+                return all(
+                    evaluate(value)
+                    for value in node.values
+                )
 
-        if (
-            isinstance(node, ast.BoolOp)
-            and isinstance(node.op, ast.Or)
-        ):
+            if isinstance(
+                node.op,
+                ast.Or
+            ):
 
-            return any(
-                evaluate(value)
-                for value in node.values
-            )
+                return any(
+                    evaluate(value)
+                    for value in node.values
+                )
 
         # ----------------------------------------------------
         # NOT
         # ----------------------------------------------------
 
-        if (
-            isinstance(node, ast.UnaryOp)
-            and isinstance(node.op, ast.Not)
+        if isinstance(
+            node,
+            ast.UnaryOp
+        ) and isinstance(
+            node.op,
+            ast.Not
         ):
 
             return not evaluate(
                 node.operand
             )
 
-        # ----------------------------------------------------
-        # Unsupported
-        # ----------------------------------------------------
-
         raise ValueError(
-            "Unsupported component in Boolean "
-            "expression: "
+            "Unsupported component in Boolean expression: "
             + ast.dump(node)
         )
 
@@ -820,6 +1131,11 @@ def generate_minterms(
     expression: str
 ) -> list[int]:
 
+    validate_expression_syntax(
+        expression,
+        variables
+    )
+
     minterms = []
 
     number_of_variables = len(
@@ -827,9 +1143,7 @@ def generate_minterms(
     )
 
     # --------------------------------------------------------
-    # Check every possible combination.
-    #
-    # n variables -> 2^n combinations
+    # Evaluate every possible input combination.
     # --------------------------------------------------------
 
     for index in range(
@@ -837,26 +1151,6 @@ def generate_minterms(
     ):
 
         values = {}
-
-        # ----------------------------------------------------
-        # Convert decimal index into bits.
-        #
-        # The FIRST variable is MSB.
-        #
-        # Example:
-        #
-        # variables = [C, B, K, S, E]
-        #
-        # index = 14
-        #
-        # binary = 01110
-        #
-        # C = 0
-        # B = 1
-        # K = 1
-        # S = 1
-        # E = 0
-        # ----------------------------------------------------
 
         for position, variable in enumerate(
             variables
@@ -874,10 +1168,6 @@ def generate_minterms(
 
             values[variable] = bit
 
-        # ----------------------------------------------------
-        # Evaluate expression.
-        # ----------------------------------------------------
-
         output = evaluate_boolean_expression(
             expression,
             variables,
@@ -894,7 +1184,7 @@ def generate_minterms(
 
 
 # ============================================================
-# GENERATE DON'T-CARE INDICES
+# GENERATE DON'T-CARES
 # ============================================================
 
 def generate_dont_cares(
@@ -913,8 +1203,15 @@ def generate_dont_cares(
 
     for condition in conditions:
 
-        if not condition.strip():
+        condition = condition.strip()
+
+        if not condition:
             continue
+
+        validate_expression_syntax(
+            condition,
+            variables
+        )
 
         for index in range(
             2 ** number_of_variables
@@ -938,23 +1235,17 @@ def generate_dont_cares(
 
                 values[variable] = bit
 
-            try:
+            output = evaluate_boolean_expression(
+                condition,
+                variables,
+                values
+            )
 
-                output = evaluate_boolean_expression(
-                    condition,
-                    variables,
-                    values
+            if output == 1:
+
+                dont_cares.append(
+                    index
                 )
-
-                if output == 1:
-
-                    dont_cares.append(
-                        index
-                    )
-
-            except Exception:
-
-                continue
 
     return sorted(
         set(dont_cares)
@@ -975,10 +1266,13 @@ def validate_variables(
             "No variables were identified."
         )
 
-    # --------------------------------------------------------
-    # No duplicate variables.
-    # --------------------------------------------------------
+    if len(variables) > MAX_VARIABLES:
 
+        raise ValueError(
+            f"Maximum {MAX_VARIABLES} variables supported."
+        )
+
+    # No duplicates.
     if len(
         set(variables)
     ) != len(variables):
@@ -987,28 +1281,280 @@ def validate_variables(
             "Duplicate variables returned."
         )
 
-    # --------------------------------------------------------
-    # Valid variable names.
-    #
-    # Examples:
-    #
-    # A
-    # B
-    # F
-    # X1
-    # --------------------------------------------------------
-
+    # We deliberately require single-letter variables.
     for variable in variables:
 
-        if not re.fullmatch(
-            r"[A-Za-z][A-Za-z0-9_]*",
-            variable
-        ):
+        if variable not in ALLOWED_VARIABLES:
 
             raise ValueError(
-                f"Invalid variable name: "
-                f"{variable}"
+                f"Invalid variable '{variable}'. "
+                f"Only A-F are supported."
             )
+
+
+# ============================================================
+# VALIDATE AI TEST CASES
+# ============================================================
+
+def validate_test_cases(
+    test_cases: list[dict[str, Any]],
+    variables: list[str],
+    expression: str
+) -> None:
+
+    if not test_cases:
+        return
+
+    for test_case in test_cases:
+
+        if not isinstance(
+            test_case,
+            dict
+        ):
+            continue
+
+        inputs = test_case.get(
+            "inputs"
+        )
+
+        expected_output = test_case.get(
+            "expected_output"
+        )
+
+        if not isinstance(
+            inputs,
+            dict
+        ):
+            continue
+
+        if expected_output not in (0, 1):
+            continue
+
+        values = {}
+
+        for variable in variables:
+
+            if variable not in inputs:
+                continue
+
+            value = inputs[variable]
+
+            if value in (0, 1):
+
+                values[variable] = value
+
+        # Only evaluate complete test cases.
+        if len(values) != len(variables):
+            continue
+
+        actual = evaluate_boolean_expression(
+            expression,
+            variables,
+            values
+        )
+
+        if actual != expected_output:
+
+            raise ValueError(
+                "Gemini's own test case disagrees "
+                "with the returned Boolean expression."
+            )
+
+
+# ============================================================
+# BUILD FINAL RESULT
+# ============================================================
+
+def construct_result(
+    variables: list[str],
+    expression: str,
+    dont_care_conditions: list[str],
+    variable_descriptions_raw: list[Any]
+):
+
+    validate_variables(
+        variables
+    )
+
+    if len(variables) > MAX_VARIABLES:
+
+        raise ValueError(
+            f"Maximum {MAX_VARIABLES} variables supported."
+        )
+
+    if not expression:
+
+        raise ValueError(
+            "No Boolean expression returned."
+        )
+
+    # --------------------------------------------------------
+    # Generate minterms.
+    # --------------------------------------------------------
+
+    minterms = generate_minterms(
+        variables,
+        expression
+    )
+
+    # --------------------------------------------------------
+    # Generate don't-cares.
+    # --------------------------------------------------------
+
+    dont_cares = generate_dont_cares(
+        variables,
+        dont_care_conditions
+    )
+
+    # --------------------------------------------------------
+    # Don't-care values cannot simultaneously be minterms.
+    # --------------------------------------------------------
+
+    dont_cares = sorted(
+        set(dont_cares)
+    )
+
+    minterms = [
+        m
+        for m in minterms
+        if m not in dont_cares
+    ]
+
+    # --------------------------------------------------------
+    # Descriptions.
+    # --------------------------------------------------------
+
+    variable_descriptions = {}
+
+    for item in variable_descriptions_raw:
+
+        if not isinstance(
+            item,
+            dict
+        ):
+            continue
+
+        letter = item.get(
+            "letter"
+        )
+
+        description = item.get(
+            "description"
+        )
+
+        if (
+            isinstance(letter, str)
+            and letter in variables
+            and isinstance(description, str)
+        ):
+
+            variable_descriptions[
+                letter
+            ] = description
+
+    # Ensure every variable appears.
+    for variable in variables:
+
+        variable_descriptions.setdefault(
+            variable,
+            ""
+        )
+
+    return {
+        "variables": variables,
+        "num_variables": len(variables),
+        "minterms": minterms,
+        "dont_cares": dont_cares,
+        "variable_descriptions": variable_descriptions,
+        "expression": expression
+    }
+
+
+# ============================================================
+# VERIFY AND, IF NECESSARY, CORRECT GEMINI ANSWER
+# ============================================================
+
+def verify_and_correct_solution(
+    problem_statement: str,
+    result: dict
+) -> dict:
+
+    verification_prompt = build_verification_prompt(
+        problem_statement,
+        result
+    )
+
+    try:
+
+        verification = call_gemini_verifier(
+            verification_prompt
+        )
+
+    except Exception:
+
+        # If verifier itself fails, retain the original solution.
+        # The primary response has already passed syntax checks.
+        return result
+
+    correct = verification.get(
+        "correct",
+        True
+    )
+
+    if correct:
+
+        return result
+
+    corrected_expression = verification.get(
+        "corrected_expression",
+        ""
+    )
+
+    corrected_variables = verification.get(
+        "corrected_variables",
+        []
+    )
+
+    corrected_dont_cares = verification.get(
+        "corrected_dont_care_conditions",
+        []
+    )
+
+    # --------------------------------------------------------
+    # If verifier claims wrong but doesn't provide a correction,
+    # do not blindly replace the existing solution.
+    # --------------------------------------------------------
+
+    if not corrected_expression:
+
+        return result
+
+    # --------------------------------------------------------
+    # Validate corrected variables.
+    # --------------------------------------------------------
+
+    try:
+
+        validate_variables(
+            corrected_variables
+        )
+
+        corrected_result = construct_result(
+            variables=corrected_variables,
+            expression=corrected_expression,
+            dont_care_conditions=corrected_dont_cares,
+            variable_descriptions_raw=result.get(
+                "variable_descriptions",
+                []
+            )
+        )
+
+        return corrected_result
+
+    except Exception:
+
+        # Keep original result if verifier's correction is invalid.
+        return result
 
 
 # ============================================================
@@ -1034,15 +1580,9 @@ def solve_boolean(
     # ========================================================
     # PATH 1:
     #
-    # USER ALREADY PROVIDED MINTERMS
+    # EXPLICIT MINTERMS
     #
-    # Example:
-    #
-    # F(C,B,K,S,E) = Σm(12,16,18,...)
-    #
-    # d(C,B,K,S,E) = Σd(13,17,...)
-    #
-    # DO NOT CALL GEMINI.
+    # Do NOT call Gemini.
     # ========================================================
 
     try:
@@ -1074,29 +1614,18 @@ def solve_boolean(
             explicit_result["dont_cares"]
         )
 
-        # No descriptions are necessary because
-        # this is an explicit minterm input.
-
         variable_descriptions = {
             variable: ""
             for variable in variables
         }
 
         return {
-
             "variables": variables,
-
-            "num_variables": len(
-                variables
-            ),
-
+            "num_variables": len(variables),
             "minterms": minterms,
-
             "dont_cares": dont_cares,
-
             "variable_descriptions":
                 variable_descriptions,
-
             "expression": None
         }
 
@@ -1105,16 +1634,16 @@ def solve_boolean(
     #
     # NATURAL-LANGUAGE WORD PROBLEM
     #
-    # Example:
-    #
-    # "A laboratory door opens when..."
-    #
-    # Send this to Gemini.
+    # Send to Gemini.
     # ========================================================
 
     prompt = build_prompt(
         req.problem_statement
     )
+
+    # --------------------------------------------------------
+    # PRIMARY GEMINI CALL
+    # --------------------------------------------------------
 
     try:
 
@@ -1122,24 +1651,26 @@ def solve_boolean(
             prompt
         )
 
-    except json.JSONDecodeError:
+    except json.JSONDecodeError as e:
 
         raise HTTPException(
             status_code=502,
             detail=(
                 "Gemini returned invalid JSON."
             )
-        )
+        ) from e
 
     except Exception as e:
 
         raise HTTPException(
             status_code=502,
-            detail=f"Gemini call failed: {e}"
+            detail=(
+                f"Gemini call failed: {str(e)}"
+            )
         )
 
     # ========================================================
-    # EXTRACT GEMINI RESULT
+    # EXTRACT RESULT
     # ========================================================
 
     variables = (
@@ -1165,8 +1696,15 @@ def solve_boolean(
         or []
     )
 
+    test_cases = (
+        result.get(
+            "test_cases"
+        )
+        or []
+    )
+
     # ========================================================
-    # VALIDATE GEMINI VARIABLES
+    # VALIDATE PRIMARY RESULT
     # ========================================================
 
     try:
@@ -1175,32 +1713,46 @@ def solve_boolean(
             variables
         )
 
+        if not expression:
+
+            raise ValueError(
+                "Gemini did not return "
+                "a Boolean expression."
+            )
+
+        validate_expression_syntax(
+            expression,
+            variables
+        )
+
+        # Verify that the AI's own test cases are consistent.
+        validate_test_cases(
+            test_cases,
+            variables,
+            expression
+        )
+
     except ValueError as e:
 
         raise HTTPException(
             status_code=502,
-            detail=str(e)
-        )
-
-    if not expression:
-
-        raise HTTPException(
-            status_code=502,
             detail=(
-                "Gemini did not return "
-                "a Boolean expression."
+                "Invalid Boolean solution from Gemini: "
+                + str(e)
             )
         )
 
     # ========================================================
-    # CALCULATE MINTERMS WITH PYTHON
+    # BUILD INITIAL PYTHON-VERIFIED RESULT
     # ========================================================
 
     try:
 
-        minterms = generate_minterms(
-            variables,
-            expression
+        final_result = construct_result(
+            variables=variables,
+            expression=expression,
+            dont_care_conditions=dont_care_conditions,
+            variable_descriptions_raw=raw_descriptions
         )
 
     except Exception as e:
@@ -1208,84 +1760,72 @@ def solve_boolean(
         raise HTTPException(
             status_code=502,
             detail=(
-                "Could not evaluate "
-                "Boolean expression: "
+                "Could not evaluate Boolean expression: "
                 + str(e)
             )
         )
 
     # ========================================================
-    # CALCULATE DON'T-CARES
+    # SECOND AI PASS
+    #
+    # Ask another Gemini call to compare the candidate
+    # against the ORIGINAL ENGLISH problem.
+    #
+    # If it finds a semantic mistake, use its correction
+    # only if that correction passes our Python validation.
+    # ========================================================
+
+    final_result = verify_and_correct_solution(
+        req.problem_statement,
+        {
+            **result,
+            **final_result
+        }
+    )
+
+    # ========================================================
+    # FINAL RE-CALCULATION
+    #
+    # Important: after the verifier possibly corrected the
+    # expression, recalculate minterms one final time.
     # ========================================================
 
     try:
 
-        dont_cares = (
-            generate_dont_cares(
-                variables,
-                dont_care_conditions
+        final_variables = final_result["variables"]
+
+        final_expression = final_result["expression"]
+
+        final_dont_care_conditions = (
+            final_result.get(
+                "dont_care_conditions",
+                []
             )
         )
 
-    except Exception:
+        rebuilt = construct_result(
+            variables=final_variables,
+            expression=final_expression,
+            dont_care_conditions=final_dont_care_conditions,
+            variable_descriptions_raw=(
+                result.get(
+                    "variable_descriptions",
+                    []
+                )
+            )
+        )
 
-        dont_cares = []
+        return rebuilt
 
-    # ========================================================
-    # DON'T-CARE VALUES MUST NOT ALSO BE MINTERMS
-    # ========================================================
+    except Exception as e:
 
-    dont_cares = sorted(
-        set(dont_cares)
-    )
-
-    minterms = [
-        m
-        for m in minterms
-        if m not in dont_cares
-    ]
-
-    # ========================================================
-    # VARIABLE DESCRIPTIONS
-    # ========================================================
-
-    variable_descriptions = {}
-
-    for item in raw_descriptions:
-
-        if (
-            isinstance(item, dict)
-            and "letter" in item
-            and "description" in item
-        ):
-
-            variable_descriptions[
-                item["letter"]
-            ] = item["description"]
-
-    # ========================================================
-    # RETURN RESULT TO FRONTEND
-    # ========================================================
-
-    return {
-
-        "variables": variables,
-
-        "num_variables": len(
-            variables
-        ),
-
-        "minterms": minterms,
-
-        "dont_cares": dont_cares,
-
-        "variable_descriptions":
-            variable_descriptions,
-
-        # Useful for debugging and optionally
-        # displaying the AI-derived expression.
-        "expression": expression
-    }
+        raise HTTPException(
+            status_code=502,
+            detail=(
+                "Final Boolean verification failed: "
+                + str(e)
+            )
+        )
 
 
 # ============================================================
@@ -1297,5 +1837,7 @@ def root():
 
     return {
         "status": "online",
-        "service": "Boolean Logic AI Backend"
+        "service": "Boolean Logic AI Backend",
+        "model": MODEL,
+        "max_variables": MAX_VARIABLES
     }
