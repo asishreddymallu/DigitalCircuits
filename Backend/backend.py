@@ -146,7 +146,6 @@ def parse_explicit_minterms(problem_statement: str):
     # Example:
     #
     # Σm(12,16,18)
-    #
     # --------------------------------------------------------
 
     minterm_match = re.search(
@@ -159,7 +158,7 @@ def parse_explicit_minterms(problem_statement: str):
     # Also support ASCII:
     #
     # sum m(1,2,3)
-    #
+
     if not minterm_match:
 
         minterm_match = re.search(
@@ -187,7 +186,6 @@ def parse_explicit_minterms(problem_statement: str):
     # Σd(13,17,21)
     # ∑d(13,17,21)
     # Σ d(13,17,21)
-    #
     # --------------------------------------------------------
 
     dont_care_match = re.search(
@@ -200,7 +198,7 @@ def parse_explicit_minterms(problem_statement: str):
     # Also support:
     #
     # sum d(1,2,3)
-    #
+
     if not dont_care_match:
 
         dont_care_match = re.search(
@@ -292,194 +290,155 @@ def parse_explicit_minterms(problem_statement: str):
 def build_prompt(problem_statement: str) -> str:
 
     return f"""
-You are an expert in Digital Logic Design and Boolean Algebra.
+You are an expert Digital Logic Design and Boolean Algebra engine.
 
-Your job is to read a natural-language Boolean logic problem
-and convert it into a Boolean expression.
+Convert the natural-language problem below into ONE EXACT Boolean
+expression representing exactly when the output is 1.
+
+The expression will be evaluated by Python for every possible input
+combination to generate the minterms. Therefore, correctness of the
+English interpretation is more important than making the expression
+short.
 
 IMPORTANT:
-You are ONLY responsible for understanding the logic.
-
-DO NOT calculate minterms yourself.
-
-A Python program will calculate the minterms from your
-Boolean expression.
+Do not overfit to any example in these instructions.
+Examples are only explanations of how to reason about language.
+They are NOT rules about the actual problem.
 
 ============================================================
-VARIABLE RULES
+1. IDENTIFY VARIABLES
 ============================================================
 
-If the problem explicitly gives variable names, ALWAYS
-preserve those exact variable names.
+If the problem explicitly provides variable names, preserve them exactly.
 
-For example, if the problem says:
+Use the order in which the variables are introduced as the variable
+order for minterm numbering.
 
-A: attendance requirement satisfied
-F: examination fee paid
-H: hall ticket available
-M: medical exemption approved
-D: disciplinary restriction active
+The first variable is the MSB.
+The last variable is the LSB.
 
-then the variables MUST be:
-
-["A", "F", "H", "M", "D"]
-
-DO NOT rename them to:
-
-["A", "B", "C", "D", "E"]
-
-The order in which the variables are given in the problem
-is the order used for minterm numbering.
-
-For:
-
-A, F, H, M, D
-
-the bit positions are:
-
-A = MSB
-F = next bit
-H = next bit
-M = next bit
-D = LSB
-
-Therefore:
-
-A F H M D
-0 1 1 1 0
-
-represents binary:
-
-01110
-
-which is decimal minterm:
-
-14
+If variable names are not explicitly provided, assign A, B, C, D, ...
+in order of introduction.
 
 ============================================================
-IF VARIABLE NAMES ARE NOT PROVIDED
+2. TRANSLATE EACH REQUIREMENT
 ============================================================
 
-If the problem does NOT explicitly provide variable names,
-then assign:
+Read the problem literally and translate each numbered or separate
+requirement independently before combining anything.
 
-A, B, C, D, ...
+Pay attention to logical words such as:
 
-in the order in which the independent inputs are introduced.
-
-============================================================
-BOOLEAN EXPRESSION
-============================================================
-
-Use ONLY these Boolean operators:
-
-AND
-OR
-NOT
-
-Use parentheses to make the logic unambiguous.
-
-Examples:
-
-A and B
-
-=> (A AND B)
-
-
-A or B
-
-=> (A OR B)
-
-
-A and either B or C
-
-=> (A AND (B OR C))
-
-
-A is false
-
-=> (NOT A)
-
-
-A and B, or C and D
-
-=> ((A AND B) OR (C AND D))
-
-============================================================
-IMPORTANT NATURAL LANGUAGE
-============================================================
-
-Pay very close attention to:
-
-- both
+- and
+- or
 - either
-- neither
+- both
 - at least
 - at most
 - exactly
 - only if
-- if and only if
-- provided that
+- only when
+- provided
 - unless
 - regardless of
-- must deny
-- must prevent
-- only when
+- irrespective of
+- suppress
+- override
+- disable
+- except
+- still
+- during
+- while
+- if
+- when
 
-Do NOT invent conditions that are not stated.
-
-If multiple independent conditions cause the output to be 1,
-combine them using OR.
-
-Example:
-
-"The door opens when A and B are valid.
-It also opens when C is active."
-
-means:
-
-(A AND B) OR C
+Do not invent requirements that are not stated.
 
 ============================================================
-OVERRIDING CONDITIONS
+3. CONDITIONAL REQUIREMENTS
 ============================================================
 
-If the problem says something like:
+A later condition can restrict, modify, or replace a general condition
+under a particular circumstance.
 
-"D must deny eligibility under every condition."
+Do NOT simply OR every sentence together.
 
-then D must override all other conditions.
+When a requirement says that one rule changes when another input or
+condition is active, split the cases and apply the correct rule to
+each case.
 
-For example:
+Generic example:
 
-If eligibility would normally be:
+"At least two of A, B and C are required, but when D is active,
+all three are required."
 
-(A AND B) OR C
+Interpret it as:
 
-and D must deny eligibility:
+D = 0:
+    (A AND B) OR (A AND C) OR (B AND C)
 
-((A AND B) OR C) AND (NOT D)
+D = 1:
+    A AND B AND C
+
+Therefore:
+
+((NOT D) AND ((A AND B) OR (A AND C) OR (B AND C)))
+OR
+(D AND A AND B AND C)
+
+This is ONLY an example of conditional reasoning.
+Do not assume A, B, C, D or these rules exist in the actual problem.
 
 ============================================================
-AT LEAST / EXACTLY
+4. CASE ANALYSIS
 ============================================================
 
-If the problem uses phrases such as:
+For complicated wording, internally divide the problem into the
+relevant cases.
 
-"at least two of A, B and C"
+For example, a condition may depend on:
 
-convert them into an equivalent Boolean expression.
+- a mode being active/inactive
+- a signal being high/low
+- a special condition being present/absent
+- an override being active/inactive
 
-For example:
+Determine the output condition for each relevant case and combine
+those cases.
 
-(A AND B) OR
-(A AND C) OR
-(B AND C)
+Only create cases that are actually required by the wording.
+Do not invent unnecessary cases.
 
+============================================================
+5. OVERRIDES, SUPPRESSION AND EXCEPTIONS
+============================================================
 
-"exactly two of A, B and C"
+If the problem says that an override or mode suppresses something,
+determine exactly which condition it suppresses.
 
-means:
+Do NOT automatically apply the suppression to the entire output.
+
+If the problem contains an exception such as:
+
+"X suppresses A, but must not suppress B"
+
+then preserve B independently of X.
+
+Likewise, words such as "still", "except", "but", "however",
+"regardless", and "irrespective" can indicate that a previous rule
+has an exception.
+
+============================================================
+6. COUNTING CONDITIONS
+============================================================
+
+Translate counting phrases carefully.
+
+"At least two of A, B, C":
+
+(A AND B) OR (A AND C) OR (B AND C)
+
+"Exactly two of A, B, C":
 
 (A AND B AND NOT C)
 OR
@@ -487,39 +446,103 @@ OR
 OR
 (NOT A AND B AND C)
 
-============================================================
-DON'T-CARES
-============================================================
+"All three":
 
-Only use don't-care conditions when the problem explicitly
-states that certain input combinations are:
+A AND B AND C
 
-- impossible
-- unused
-- irrelevant
-- don't-care
+"At least one":
 
-Do NOT invent don't-care states.
+A OR B OR C
 
-Normally return:
-
-"dont_care_conditions": []
+Do not confuse "at least" with "exactly".
 
 ============================================================
-OUTPUT FORMAT
+7. VARIABLE MEANINGS AND NEGATION
+============================================================
+
+Respect the meaning assigned to every variable.
+
+If:
+
+T = temperature is high
+
+then:
+
+T     = temperature is high
+NOT T = temperature is not high
+
+If:
+
+M = maintenance mode is active
+
+then:
+
+M     = maintenance mode is active
+NOT M = maintenance mode is inactive
+
+Do not silently reverse or reinterpret variable meanings.
+
+============================================================
+8. COMBINE THE RULES
+============================================================
+
+After translating the individual requirements and resolving all
+conditions, construct ONE Boolean expression for the output.
+
+The expression must describe the complete truth condition.
+
+Do not minimize it.
+
+Do not calculate minterms yourself.
+
+Do not use Quine-McCluskey.
+
+Do not use Karnaugh maps.
+
+Python will evaluate the expression for all input combinations.
+
+============================================================
+9. SELF-CHECK
+============================================================
+
+Before returning the expression, check it against the original
+English problem.
+
+Verify:
+
+1. Every activation condition is represented.
+2. Every restriction is enforced.
+3. Conditional rules apply only in their stated cases.
+4. Overrides affect only what they are stated to suppress.
+5. Explicit exceptions are preserved.
+6. No unstated assumptions were introduced.
+7. No valid condition was omitted.
+8. The variable names and variable order are correct.
+
+For complicated problems, mentally test representative combinations,
+especially boundary cases where two or more rules overlap.
+
+============================================================
+10. DON'T-CARE CONDITIONS
+============================================================
+
+Only return don't-care conditions if the problem explicitly states
+that certain combinations are impossible, unused, irrelevant, or
+don't-care.
+
+Otherwise return an empty list.
+
+============================================================
+11. OUTPUT FORMAT
 ============================================================
 
 Return ONLY valid JSON.
-
-Do not return Markdown.
-
-Do not return explanations.
 
 Use exactly this structure:
 
 {{
     "variables": ["A", "B", "C"],
-    "expression": "(A AND B) OR C",
+    "expression": "((A AND B) OR C)",
     "dont_care_conditions": [],
     "variable_descriptions": [
         {{
@@ -536,6 +559,9 @@ Use exactly this structure:
         }}
     ]
 }}
+
+Do not return Markdown.
+Do not return explanations outside the JSON.
 
 ============================================================
 PROBLEM TO SOLVE
