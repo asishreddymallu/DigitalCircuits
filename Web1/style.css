@@ -398,6 +398,12 @@ body::before {
     color: var(--accent-secondary);
 }
 
+.word-problem-actions {
+    display: flex;
+    justify-content: flex-end;
+    margin-top: 10px;
+}
+
 .help-text {
     font-size: 13px;
     color: var(--text-muted);

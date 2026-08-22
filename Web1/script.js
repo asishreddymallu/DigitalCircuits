@@ -2031,6 +2031,29 @@ if (tryExampleBtn) {
     });
 }
 /* =========================================================
+   WORD PROBLEM EXAMPLE PRESETS
+========================================================= */
+const wordProblemExamplePresets = [
+    { problem: "A laboratory door opens when the identity card and PIN are both valid, or when emergency mode is active and either the PIN is correct or faculty authorization is present.", description: "Lab door access" },
+    { problem: "A warning light turns on when the engine is overheating, or when the oil pressure is low and the ignition is on.", description: "Engine warning light" },
+    { problem: "A student passes the course if they attend at least 75% of the classes and pass the final exam, or if they have special approval from the dean.", description: "Course pass condition" },
+    { problem: "A smart irrigation system waters the garden if the soil is dry and it is not raining, or if the manual override switch is turned on.", description: "Smart irrigation" },
+    { problem: "An alarm sounds if a window is open and the security system is armed, or if the smoke detector is triggered regardless of the armed state.", description: "Home alarm system" }
+];
+let wordProblemExampleIndex = 0;
+const tryWordProblemExampleBtn = document.getElementById("tryWordProblemExampleBtn");
+if (tryWordProblemExampleBtn) {
+    tryWordProblemExampleBtn.addEventListener("click", () => {
+        if (window.StudioFX)
+            window.StudioFX.click(true);
+        const preset = wordProblemExamplePresets[wordProblemExampleIndex % wordProblemExamplePresets.length];
+        problemStatementInput.value = preset.problem;
+        problemStatementInput.focus();
+        tryWordProblemExampleBtn.textContent = preset.description;
+        wordProblemExampleIndex++;
+    });
+}
+/* =========================================================
    COPY BUTTONS
 ========================================================= */
 document.querySelectorAll(".copy-btn").forEach(button => {
