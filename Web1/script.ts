@@ -1939,7 +1939,7 @@ solveButton.addEventListener("click", () => {
 // Point this at your deployed FastAPI backend (bolean_backend.py).
 // Never call the Gemini API directly from the browser - the key
 // must stay server-side.
-const BOOLEAN_API_BASE = "https://digitalcircuits.onrender.com/";
+const BOOLEAN_API_BASE = "https://digitalcircuits.onrender.com";
 
 interface WordProblemResult {
     variables: string[];
