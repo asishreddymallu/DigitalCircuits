@@ -1,46 +1,35 @@
-/* =========================================================
-   DIGITAL CIRCUITS SIMULATOR - COMPLETE STUDIO ENGINE
-   - 6 Categories & 18 Circuits
-   - Live wire signal evaluation (Active High = Neon Green)
-   - Step-by-step carry ripple animation with visual glow
-   - Real-Time Logic Analyzer (Timing Diagram) Canvas
-   - Synthesizable Verilog HDL Export
-   - Full Vector Zoom & Pan Engine & Studio Sound FX
-   - Zero-Overlap Manhattan Wires with Broken-Line Jump Transitions
-========================================================= */
-/* =========================================================
-   SCHEMATIC VECTOR HELPERS WITH WIRE JUMP HOPS
-========================================================= */
-function wireHopH(x1, x2, y, crossXs, isHigh) {
+"use strict";
+(() => {
+  // Web2/src/gates.ts
+  function wireHopH(x1, x2, y, crossXs, isHigh) {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
     const isLtoR = x1 <= x2;
     const cls = isHigh ? "wire-active" : "wire-inactive";
-    const valid = crossXs.filter(cx => cx > minX + 8 && cx < maxX - 8).sort((a, b) => isLtoR ? a - b : b - a);
+    const valid = crossXs.filter((cx) => cx > minX + 8 && cx < maxX - 8).sort((a, b) => isLtoR ? a - b : b - a);
     if (valid.length === 0) {
-        return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" class="${cls}" stroke-width="2.2" fill="none" />`;
+      return `<line x1="${x1}" y1="${y}" x2="${x2}" y2="${y}" class="${cls}" stroke-width="2.2" fill="none" />`;
     }
     let d = `M ${x1} ${y}`;
-    valid.forEach(cx => {
-        if (isLtoR) {
-            d += ` H ${cx - 7} A 7 7 0 0 1 ${cx + 7} ${y}`;
-        }
-        else {
-            d += ` H ${cx + 7} A 7 7 0 0 1 ${cx - 7} ${y}`;
-        }
+    valid.forEach((cx) => {
+      if (isLtoR) {
+        d += ` H ${cx - 7} A 7 7 0 0 1 ${cx + 7} ${y}`;
+      } else {
+        d += ` H ${cx + 7} A 7 7 0 0 1 ${cx - 7} ${y}`;
+      }
     });
     d += ` H ${x2}`;
     return `<path d="${d}" class="${cls}" stroke-width="2.2" fill="none" />`;
-}
-function wireV(x, y1, y2, isHigh) {
+  }
+  function wireV(x, y1, y2, isHigh) {
     const cls = isHigh ? "wire-active" : "wire-inactive";
     return `<line x1="${x}" y1="${y1}" x2="${x}" y2="${y2}" class="${cls}" stroke-width="2.2" fill="none" />`;
-}
-function dot(cx, cy, isHigh) {
+  }
+  function dot(cx, cy, isHigh) {
     const col = isHigh ? "var(--wire-high)" : "var(--wire-low)";
     return `<circle cx="${cx}" cy="${cy}" r="3.8" class="circuit-junction" fill="${col}" />`;
-}
-function gateXOR(x, y, label = "XOR") {
+  }
+  function gateXOR(x, y, label = "XOR") {
     return `
         <g transform="translate(${x}, ${y})">
             <path d="M 6 0 Q 18 20 6 40 Q 36 40 60 20 Q 36 0 6 0 Z" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
@@ -48,50 +37,32 @@ function gateXOR(x, y, label = "XOR") {
             <text x="26" y="24" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text-primary)">${label}</text>
         </g>
     `;
-}
-function gateAND(x, y, label = "AND") {
+  }
+  function gateAND(x, y, label = "AND") {
     return `
         <g transform="translate(${x}, ${y})">
             <path d="M 0 0 h 30 a 20 20 0 0 1 0 40 h -30 z" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
             <text x="22" y="25" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text-primary)">${label}</text>
         </g>
     `;
-}
-function gateOR(x, y, label = "OR") {
+  }
+  function gateOR(x, y, label = "OR") {
     return `
         <g transform="translate(${x}, ${y})">
             <path d="M 0 0 Q 14 20 0 40 Q 32 40 56 20 Q 32 0 0 0 Z" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
             <text x="24" y="24" text-anchor="middle" font-size="11" font-weight="800" fill="var(--text-primary)">${label}</text>
         </g>
     `;
-}
-function gateNOT(x, y) {
+  }
+  function gateNOT(x, y) {
     return `
         <g transform="translate(${x}, ${y})">
             <polygon points="0,0 26,12 0,24" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
             <circle cx="31" cy="12" r="4" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
         </g>
     `;
-}
-function gateNAND(x, y, label = "NAND") {
-    return `
-        <g transform="translate(${x}, ${y})">
-            <path d="M 0 0 h 30 a 20 20 0 0 1 0 40 h -30 z" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
-            <circle cx="55" cy="20" r="4" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
-            <text x="20" y="25" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">${label}</text>
-        </g>
-    `;
-}
-function gateNOR(x, y, label = "NOR") {
-    return `
-        <g transform="translate(${x}, ${y})">
-            <path d="M 0 0 Q 14 20 0 40 Q 32 40 56 20 Q 32 0 0 0 Z" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
-            <circle cx="61" cy="20" r="4" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
-            <text x="22" y="24" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">${label}</text>
-        </g>
-    `;
-}
-function gateXNOR(x, y, label = "XNOR") {
+  }
+  function gateXNOR(x, y, label = "XNOR") {
     return `
         <g transform="translate(${x}, ${y})">
             <path d="M 6 0 Q 18 20 6 40 Q 36 40 60 20 Q 36 0 6 0 Z" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
@@ -100,36 +71,33 @@ function gateXNOR(x, y, label = "XNOR") {
             <text x="24" y="24" text-anchor="middle" font-size="10" font-weight="800" fill="var(--text-primary)">${label}</text>
         </g>
     `;
-}
-/* =========================================================
-   CIRCUIT REPOSITORY (18 CIRCUITS)
-========================================================= */
-const CIRCUITS = {
-    // 1. ADDERS
-    half_adder: {
-        id: "half_adder",
-        title: "Half Adder",
-        description: "Adds two 1-bit binary inputs (A, B) producing Sum and Carry outputs.",
-        inputs: ["A", "B"],
-        outputs: ["Sum (S)", "Carry (C)"],
-        evaluate: (inp) => {
-            const sum = inp.A ^ inp.B;
-            const carry = inp.A & inp.B;
-            return { "Sum (S)": sum, "Carry (C)": carry };
-        },
-        truthTable: [
-            { inputs: [0, 0], outputs: [0, 0] },
-            { inputs: [0, 1], outputs: [1, 0] },
-            { inputs: [1, 0], outputs: [1, 0] },
-            { inputs: [1, 1], outputs: [0, 1] }
-        ],
-        expressions: [
-            { output: "Sum (S)", formula: "A ⊕ B" },
-            { output: "Carry (C)", formula: "A · B" }
-        ],
-        renderSchematic: (inp, out) => {
-            const a = inp.A, b = inp.B, s = out["Sum (S)"], c = out["Carry (C)"];
-            return `
+  }
+
+  // Web2/src/circuits/adders.ts
+  var half_adder = {
+    id: "half_adder",
+    title: "Half Adder",
+    description: "Adds two 1-bit binary inputs (A, B) producing Sum and Carry outputs.",
+    inputs: ["A", "B"],
+    outputs: ["Sum (S)", "Carry (C)"],
+    evaluate: (inp) => {
+      const sum = inp.A ^ inp.B;
+      const carry = inp.A & inp.B;
+      return { "Sum (S)": sum, "Carry (C)": carry };
+    },
+    truthTable: [
+      { inputs: [0, 0], outputs: [0, 0] },
+      { inputs: [0, 1], outputs: [1, 0] },
+      { inputs: [1, 0], outputs: [1, 0] },
+      { inputs: [1, 1], outputs: [0, 1] }
+    ],
+    expressions: [
+      { output: "Sum (S)", formula: "A \u2295 B" },
+      { output: "Carry (C)", formula: "A \xB7 B" }
+    ],
+    renderSchematic: (inp, out) => {
+      const a = inp.A, b = inp.B, s = out["Sum (S)"], c = out["Carry (C)"];
+      return `
                 <svg width="600" height="240" viewBox="0 0 600 240" class="circuit-svg">
                     <!-- Gates -->
                     ${gateXOR(260, 40)}
@@ -158,8 +126,8 @@ const CIRCUITS = {
                     <text x="510" y="165" font-weight="800" font-size="14" fill="var(--text-primary)">Carry = ${c}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module half_adder (
+    },
+    verilogModule: `module half_adder (
     input  wire A,
     input  wire B,
     output wire Sum,
@@ -168,39 +136,39 @@ const CIRCUITS = {
     assign Sum   = A ^ B;
     assign Carry = A & B;
 endmodule`
+  };
+  var full_adder = {
+    id: "full_adder",
+    title: "Full Adder",
+    description: "Adds three 1-bit inputs: A, B, and Carry In (Cin), producing Sum and Carry Out (Cout).",
+    inputs: ["A", "B", "Cin"],
+    outputs: ["Sum (S)", "Cout"],
+    evaluate: (inp) => {
+      const sum = inp.A ^ inp.B ^ inp.Cin;
+      const cout = inp.A & inp.B | inp.B & inp.Cin | inp.A & inp.Cin;
+      return { "Sum (S)": sum, "Cout": cout };
     },
-    full_adder: {
-        id: "full_adder",
-        title: "Full Adder",
-        description: "Adds three 1-bit inputs: A, B, and Carry In (Cin), producing Sum and Carry Out (Cout).",
-        inputs: ["A", "B", "Cin"],
-        outputs: ["Sum (S)", "Cout"],
-        evaluate: (inp) => {
-            const sum = inp.A ^ inp.B ^ inp.Cin;
-            const cout = (inp.A & inp.B) | (inp.B & inp.Cin) | (inp.A & inp.Cin);
-            return { "Sum (S)": sum, "Cout": cout };
-        },
-        truthTable: [
-            { inputs: [0, 0, 0], outputs: [0, 0] },
-            { inputs: [0, 0, 1], outputs: [1, 0] },
-            { inputs: [0, 1, 0], outputs: [1, 0] },
-            { inputs: [0, 1, 1], outputs: [0, 1] },
-            { inputs: [1, 0, 0], outputs: [1, 0] },
-            { inputs: [1, 0, 1], outputs: [0, 1] },
-            { inputs: [1, 1, 0], outputs: [0, 1] },
-            { inputs: [1, 1, 1], outputs: [1, 1] }
-        ],
-        expressions: [
-            { output: "Sum (S)", formula: "A ⊕ B ⊕ Cin" },
-            { output: "Cout", formula: "A·B + Cin·(A ⊕ B)" }
-        ],
-        renderSchematic: (inp, out) => {
-            const a = inp.A, b = inp.B, cin = inp.Cin;
-            const axorb = a ^ b;
-            const aandb = a & b;
-            const axorb_cin = axorb & cin;
-            const s = out["Sum (S)"], cout = out["Cout"];
-            return `
+    truthTable: [
+      { inputs: [0, 0, 0], outputs: [0, 0] },
+      { inputs: [0, 0, 1], outputs: [1, 0] },
+      { inputs: [0, 1, 0], outputs: [1, 0] },
+      { inputs: [0, 1, 1], outputs: [0, 1] },
+      { inputs: [1, 0, 0], outputs: [1, 0] },
+      { inputs: [1, 0, 1], outputs: [0, 1] },
+      { inputs: [1, 1, 0], outputs: [0, 1] },
+      { inputs: [1, 1, 1], outputs: [1, 1] }
+    ],
+    expressions: [
+      { output: "Sum (S)", formula: "A \u2295 B \u2295 Cin" },
+      { output: "Cout", formula: "A\xB7B + Cin\xB7(A \u2295 B)" }
+    ],
+    renderSchematic: (inp, out) => {
+      const a = inp.A, b = inp.B, cin = inp.Cin;
+      const axorb = a ^ b;
+      const aandb = a & b;
+      const axorb_cin = axorb & cin;
+      const s = out["Sum (S)"], cout = out["Cout"];
+      return `
                 <svg width="720" height="280" viewBox="0 0 720 280" class="circuit-svg">
                     <!-- Gates -->
                     ${gateXOR(190, 40, "XOR1")}
@@ -221,13 +189,13 @@ endmodule`
                     ${wireHopH(140, 188, 70, [], b)}
                     ${wireHopH(140, 190, 145, [], b)}
 
-                    <!-- Intermediate XOR1 Out (A ⊕ B) -->
+                    <!-- Intermediate XOR1 Out (A \u2295 B) -->
                     ${wireHopH(250, 368, 60, [], axorb)}
                     ${dot(280, 60, axorb)}
                     ${wireV(280, 60, 135, axorb)}
                     ${wireHopH(280, 370, 135, [330], axorb)}
 
-                    <!-- Intermediate AND1 Out (A · B) -->
+                    <!-- Intermediate AND1 Out (A \xB7 B) -->
                     ${wireHopH(240, 300, 135, [], aandb)}
                     ${wireV(300, 135, 185, aandb)}
                     ${wireHopH(300, 530, 185, [330], aandb)}
@@ -256,8 +224,8 @@ endmodule`
                     <text x="645" y="180" font-weight="800" font-size="14" fill="var(--text-primary)">Cout = ${cout}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module full_adder (
+    },
+    verilogModule: `module full_adder (
     input  wire A,
     input  wire B,
     input  wire Cin,
@@ -267,53 +235,53 @@ endmodule`
     assign Sum  = A ^ B ^ Cin;
     assign Cout = (A & B) | (B & Cin) | (A & Cin);
 endmodule`
+  };
+  var ripple_carry_adder_4bit = {
+    id: "ripple_carry_adder_4bit",
+    title: "4-Bit Ripple Carry Adder",
+    description: "Cascaded 4 Full Adders where the carry propagates sequentially from Stage 0 to Stage 3.",
+    inputs: ["A3", "A2", "A1", "A0", "B3", "B2", "B1", "B0", "Cin"],
+    outputs: ["S3", "S2", "S1", "S0", "Cout"],
+    evaluate: (inp) => {
+      const a = inp.A3 << 3 | inp.A2 << 2 | inp.A1 << 1 | inp.A0;
+      const b = inp.B3 << 3 | inp.B2 << 2 | inp.B1 << 1 | inp.B0;
+      const total = a + b + inp.Cin;
+      return {
+        "S0": total & 1,
+        "S1": total >> 1 & 1,
+        "S2": total >> 2 & 1,
+        "S3": total >> 3 & 1,
+        "Cout": total >> 4 & 1
+      };
     },
-    ripple_carry_adder_4bit: {
-        id: "ripple_carry_adder_4bit",
-        title: "4-Bit Ripple Carry Adder",
-        description: "Cascaded 4 Full Adders where the carry propagates sequentially from Stage 0 to Stage 3.",
-        inputs: ["A3", "A2", "A1", "A0", "B3", "B2", "B1", "B0", "Cin"],
-        outputs: ["S3", "S2", "S1", "S0", "Cout"],
-        evaluate: (inp) => {
-            const a = (inp.A3 << 3) | (inp.A2 << 2) | (inp.A1 << 1) | inp.A0;
-            const b = (inp.B3 << 3) | (inp.B2 << 2) | (inp.B1 << 1) | inp.B0;
-            const total = a + b + inp.Cin;
-            return {
-                "S0": total & 1,
-                "S1": (total >> 1) & 1,
-                "S2": (total >> 2) & 1,
-                "S3": (total >> 3) & 1,
-                "Cout": (total >> 4) & 1
-            };
-        },
-        truthTable: [
-            { inputs: [0, 0, 0, 0, 0, 0, 0, 0, 0], outputs: [0, 0, 0, 0, 0] },
-            { inputs: [0, 1, 0, 1, 0, 0, 1, 1, 0], outputs: [1, 0, 0, 0, 0] },
-            { inputs: [1, 1, 1, 1, 0, 0, 0, 1, 0], outputs: [0, 0, 0, 0, 1] },
-            { inputs: [1, 0, 1, 0, 0, 1, 0, 1, 1], outputs: [0, 0, 0, 0, 1] }
-        ],
-        expressions: [
-            { output: "Si", formula: "Ai ⊕ Bi ⊕ Ci" },
-            { output: "Ci+1", formula: "Ai·Bi + Ci·(Ai ⊕ Bi)" }
-        ],
-        renderSchematic: (inp, out, rippleStage = -1) => {
-            const c0 = inp.Cin;
-            const c1 = (inp.A0 & inp.B0) | (c0 & (inp.A0 ^ inp.B0));
-            const c2 = (inp.A1 & inp.B1) | (c1 & (inp.A1 ^ inp.B1));
-            const c3 = (inp.A2 & inp.B2) | (c2 & (inp.A2 ^ inp.B2));
-            const cout = out.Cout;
-            const stages = [
-                { id: 0, a: inp.A0, b: inp.B0, cin: c0, s: out.S0, cout: c1, x: 590 },
-                { id: 1, a: inp.A1, b: inp.B1, cin: c1, s: out.S1, cout: c2, x: 430 },
-                { id: 2, a: inp.A2, b: inp.B2, cin: c2, s: out.S2, cout: c3, x: 270 },
-                { id: 3, a: inp.A3, b: inp.B3, cin: c3, s: out.S3, cout: cout, x: 110 }
-            ];
-            let svg = `<svg width="780" height="270" viewBox="0 0 780 270" class="circuit-svg">`;
-            stages.forEach((st, idx) => {
-                const isRipple = rippleStage === idx;
-                const strokeCol = isRipple ? "#f59e0b" : "var(--border-hover)";
-                const strokeW = isRipple ? "3.5" : "2";
-                svg += `
+    truthTable: [
+      { inputs: [0, 0, 0, 0, 0, 0, 0, 0, 0], outputs: [0, 0, 0, 0, 0] },
+      { inputs: [0, 1, 0, 1, 0, 0, 1, 1, 0], outputs: [1, 0, 0, 0, 0] },
+      { inputs: [1, 1, 1, 1, 0, 0, 0, 1, 0], outputs: [0, 0, 0, 0, 1] },
+      { inputs: [1, 0, 1, 0, 0, 1, 0, 1, 1], outputs: [0, 0, 0, 0, 1] }
+    ],
+    expressions: [
+      { output: "Si", formula: "Ai \u2295 Bi \u2295 Ci" },
+      { output: "Ci+1", formula: "Ai\xB7Bi + Ci\xB7(Ai \u2295 Bi)" }
+    ],
+    renderSchematic: (inp, out, rippleStage = -1) => {
+      const c0 = inp.Cin;
+      const c1 = inp.A0 & inp.B0 | c0 & (inp.A0 ^ inp.B0);
+      const c2 = inp.A1 & inp.B1 | c1 & (inp.A1 ^ inp.B1);
+      const c3 = inp.A2 & inp.B2 | c2 & (inp.A2 ^ inp.B2);
+      const cout = out.Cout;
+      const stages = [
+        { id: 0, a: inp.A0, b: inp.B0, cin: c0, s: out.S0, cout: c1, x: 590 },
+        { id: 1, a: inp.A1, b: inp.B1, cin: c1, s: out.S1, cout: c2, x: 430 },
+        { id: 2, a: inp.A2, b: inp.B2, cin: c2, s: out.S2, cout: c3, x: 270 },
+        { id: 3, a: inp.A3, b: inp.B3, cin: c3, s: out.S3, cout, x: 110 }
+      ];
+      let svg = `<svg width="780" height="270" viewBox="0 0 780 270" class="circuit-svg">`;
+      stages.forEach((st, idx) => {
+        const isRipple = rippleStage === idx;
+        const strokeCol = isRipple ? "#f59e0b" : "var(--border-hover)";
+        const strokeW = isRipple ? "3.5" : "2";
+        svg += `
                     <g transform="translate(${st.x}, 50)">
                         <rect width="110" height="130" rx="12" fill="var(--bg-card-alt)" stroke="${strokeCol}" stroke-width="${strokeW}" />
                         <text x="55" y="35" text-anchor="middle" font-weight="800" font-size="14" fill="var(--text-primary)">FA ${st.id}</text>
@@ -331,28 +299,27 @@ endmodule`
                     ${wireV(st.x + 55, 180, 230, st.s)}
                     <text x="${st.x + 55}" y="248" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)">S${st.id} = ${st.s}</text>
                 `;
-                if (idx < 3) {
-                    const nextX = stages[idx + 1].x;
-                    const carryVal = st.cout;
-                    const isCarryActive = carryVal === 1;
-                    const rippleCls = (rippleStage === idx + 1) ? "wire-ripple-active" : (isCarryActive ? "wire-active" : "wire-inactive");
-                    svg += `
+        if (idx < 3) {
+          const nextX = stages[idx + 1].x;
+          const carryVal = st.cout;
+          const isCarryActive = carryVal === 1;
+          const rippleCls = rippleStage === idx + 1 ? "wire-ripple-active" : isCarryActive ? "wire-active" : "wire-inactive";
+          svg += `
                         <line x1="${st.x}" y1="115" x2="${nextX + 110}" y2="115" class="${rippleCls}" stroke-width="2.5" />
                         <text x="${(st.x + nextX + 110) / 2}" y="105" text-anchor="middle" font-size="11" font-weight="750" fill="var(--text-muted)">C${st.id + 1}=${carryVal}</text>
                     `;
-                }
-            });
-            // Final Cout & Initial Cin
-            svg += `
+        }
+      });
+      svg += `
                 ${wireHopH(700, 760, 115, [], c0)}
                 <text x="765" y="120" font-weight="800" font-size="13" fill="var(--text-primary)">Cin</text>
                 ${wireHopH(40, 110, 115, [], cout)}
                 <text x="10" y="120" font-weight="800" font-size="13" fill="var(--text-primary)">Cout</text>
             `;
-            svg += `</svg>`;
-            return svg;
-        },
-        verilogModule: `module ripple_carry_adder_4bit (
+      svg += `</svg>`;
+      return svg;
+    },
+    verilogModule: `module ripple_carry_adder_4bit (
     input  wire [3:0] A,
     input  wire [3:0] B,
     input  wire       Cin,
@@ -363,33 +330,34 @@ endmodule`
     assign Sum  = full_sum[3:0];
     assign Cout = full_sum[4];
 endmodule`
+  };
+
+  // Web2/src/circuits/subtractors.ts
+  var half_subtractor = {
+    id: "half_subtractor",
+    title: "Half Subtractor",
+    description: "Subtracts 1-bit input B from A, producing Difference (D) and Borrow (Bout).",
+    inputs: ["A", "B"],
+    outputs: ["Diff (D)", "Borrow (Bout)"],
+    evaluate: (inp) => {
+      const diff = inp.A ^ inp.B;
+      const bout = 1 - inp.A & inp.B;
+      return { "Diff (D)": diff, "Borrow (Bout)": bout };
     },
-    // 2. SUBTRACTORS
-    half_subtractor: {
-        id: "half_subtractor",
-        title: "Half Subtractor",
-        description: "Subtracts 1-bit input B from A, producing Difference (D) and Borrow (Bout).",
-        inputs: ["A", "B"],
-        outputs: ["Diff (D)", "Borrow (Bout)"],
-        evaluate: (inp) => {
-            const diff = inp.A ^ inp.B;
-            const bout = (1 - inp.A) & inp.B;
-            return { "Diff (D)": diff, "Borrow (Bout)": bout };
-        },
-        truthTable: [
-            { inputs: [0, 0], outputs: [0, 0] },
-            { inputs: [0, 1], outputs: [1, 1] },
-            { inputs: [1, 0], outputs: [1, 0] },
-            { inputs: [1, 1], outputs: [0, 0] }
-        ],
-        expressions: [
-            { output: "Diff (D)", formula: "A ⊕ B" },
-            { output: "Borrow (Bout)", formula: "A' · B" }
-        ],
-        renderSchematic: (inp, out) => {
-            const a = inp.A, b = inp.B, d = out["Diff (D)"], bo = out["Borrow (Bout)"];
-            const notA = 1 - a;
-            return `
+    truthTable: [
+      { inputs: [0, 0], outputs: [0, 0] },
+      { inputs: [0, 1], outputs: [1, 1] },
+      { inputs: [1, 0], outputs: [1, 0] },
+      { inputs: [1, 1], outputs: [0, 0] }
+    ],
+    expressions: [
+      { output: "Diff (D)", formula: "A \u2295 B" },
+      { output: "Borrow (Bout)", formula: "A' \xB7 B" }
+    ],
+    renderSchematic: (inp, out) => {
+      const a = inp.A, b = inp.B, d = out["Diff (D)"], bo = out["Borrow (Bout)"];
+      const notA = 1 - a;
+      return `
                 <svg width="600" height="240" viewBox="0 0 600 240" class="circuit-svg">
                     <!-- Gates -->
                     ${gateXOR(260, 40, "XOR")}
@@ -421,8 +389,8 @@ endmodule`
                     <text x="510" y="165" font-weight="800" font-size="14" fill="var(--text-primary)">Bout = ${bo}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module half_subtractor (
+    },
+    verilogModule: `module half_subtractor (
     input  wire A,
     input  wire B,
     output wire Diff,
@@ -431,41 +399,41 @@ endmodule`
     assign Diff = A ^ B;
     assign Bout = (~A) & B;
 endmodule`
+  };
+  var full_subtractor = {
+    id: "full_subtractor",
+    title: "Full Subtractor",
+    description: "Calculates difference of 3 bits: A, B, and Bin, producing Difference and Bout.",
+    inputs: ["A", "B", "Bin"],
+    outputs: ["Diff (D)", "Bout"],
+    evaluate: (inp) => {
+      const diff = inp.A ^ inp.B ^ inp.Bin;
+      const bout = 1 - inp.A & inp.B | 1 - (inp.A ^ inp.B) & inp.Bin;
+      return { "Diff (D)": diff, "Bout": bout };
     },
-    full_subtractor: {
-        id: "full_subtractor",
-        title: "Full Subtractor",
-        description: "Calculates difference of 3 bits: A, B, and Bin, producing Difference and Bout.",
-        inputs: ["A", "B", "Bin"],
-        outputs: ["Diff (D)", "Bout"],
-        evaluate: (inp) => {
-            const diff = inp.A ^ inp.B ^ inp.Bin;
-            const bout = ((1 - inp.A) & inp.B) | ((1 - (inp.A ^ inp.B)) & inp.Bin);
-            return { "Diff (D)": diff, "Bout": bout };
-        },
-        truthTable: [
-            { inputs: [0, 0, 0], outputs: [0, 0] },
-            { inputs: [0, 0, 1], outputs: [1, 1] },
-            { inputs: [0, 1, 0], outputs: [1, 1] },
-            { inputs: [0, 1, 1], outputs: [0, 1] },
-            { inputs: [1, 0, 0], outputs: [1, 0] },
-            { inputs: [1, 0, 1], outputs: [0, 0] },
-            { inputs: [1, 1, 0], outputs: [0, 0] },
-            { inputs: [1, 1, 1], outputs: [1, 1] }
-        ],
-        expressions: [
-            { output: "Diff (D)", formula: "A ⊕ B ⊕ Bin" },
-            { output: "Bout", formula: "A'·B + Bin·(A ⊕ B)'" }
-        ],
-        renderSchematic: (inp, out) => {
-            const a = inp.A, b = inp.B, bin = inp.Bin;
-            const notA = 1 - a;
-            const d1 = a ^ b;
-            const notD1 = 1 - d1;
-            const b1 = notA & b;
-            const b2 = notD1 & bin;
-            const d = out["Diff (D)"], bout = out["Bout"];
-            return `
+    truthTable: [
+      { inputs: [0, 0, 0], outputs: [0, 0] },
+      { inputs: [0, 0, 1], outputs: [1, 1] },
+      { inputs: [0, 1, 0], outputs: [1, 1] },
+      { inputs: [0, 1, 1], outputs: [0, 1] },
+      { inputs: [1, 0, 0], outputs: [1, 0] },
+      { inputs: [1, 0, 1], outputs: [0, 0] },
+      { inputs: [1, 1, 0], outputs: [0, 0] },
+      { inputs: [1, 1, 1], outputs: [1, 1] }
+    ],
+    expressions: [
+      { output: "Diff (D)", formula: "A \u2295 B \u2295 Bin" },
+      { output: "Bout", formula: "A'\xB7B + Bin\xB7(A \u2295 B)'" }
+    ],
+    renderSchematic: (inp, out) => {
+      const a = inp.A, b = inp.B, bin = inp.Bin;
+      const notA = 1 - a;
+      const d1 = a ^ b;
+      const notD1 = 1 - d1;
+      const b1 = notA & b;
+      const b2 = notD1 & bin;
+      const d = out["Diff (D)"], bout = out["Bout"];
+      return `
                 <svg width="740" height="280" viewBox="0 0 740 280" class="circuit-svg">
                     <!-- Gates -->
                     ${gateXOR(200, 40, "XOR1")}
@@ -527,8 +495,8 @@ endmodule`
                     <text x="665" y="180" font-weight="800" font-size="14" fill="var(--text-primary)">Bout = ${bout}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module full_subtractor (
+    },
+    verilogModule: `module full_subtractor (
     input  wire A,
     input  wire B,
     input  wire Bin,
@@ -538,49 +506,49 @@ endmodule`
     assign Diff = A ^ B ^ Bin;
     assign Bout = ((~A) & B) | (~(A ^ B) & Bin);
 endmodule`
+  };
+  var subtractor_4bit = {
+    id: "subtractor_4bit",
+    title: "4-Bit Ripple Borrow Subtractor",
+    description: "Cascaded 4 Full Subtractors subtracting 4-bit word B from A with borrow propagation.",
+    inputs: ["A3", "A2", "A1", "A0", "B3", "B2", "B1", "B0", "Bin"],
+    outputs: ["D3", "D2", "D1", "D0", "Bout"],
+    evaluate: (inp) => {
+      const a = inp.A3 << 3 | inp.A2 << 2 | inp.A1 << 1 | inp.A0;
+      const b = inp.B3 << 3 | inp.B2 << 2 | inp.B1 << 1 | inp.B0;
+      const diff = a - b - inp.Bin & 31;
+      return {
+        "D0": diff & 1,
+        "D1": diff >> 1 & 1,
+        "D2": diff >> 2 & 1,
+        "D3": diff >> 3 & 1,
+        "Bout": diff >> 4 & 1
+      };
     },
-    subtractor_4bit: {
-        id: "subtractor_4bit",
-        title: "4-Bit Ripple Borrow Subtractor",
-        description: "Cascaded 4 Full Subtractors subtracting 4-bit word B from A with borrow propagation.",
-        inputs: ["A3", "A2", "A1", "A0", "B3", "B2", "B1", "B0", "Bin"],
-        outputs: ["D3", "D2", "D1", "D0", "Bout"],
-        evaluate: (inp) => {
-            const a = (inp.A3 << 3) | (inp.A2 << 2) | (inp.A1 << 1) | inp.A0;
-            const b = (inp.B3 << 3) | (inp.B2 << 2) | (inp.B1 << 1) | inp.B0;
-            const diff = (a - b - inp.Bin) & 0x1F;
-            return {
-                "D0": diff & 1,
-                "D1": (diff >> 1) & 1,
-                "D2": (diff >> 2) & 1,
-                "D3": (diff >> 3) & 1,
-                "Bout": (diff >> 4) & 1
-            };
-        },
-        truthTable: [
-            { inputs: [0, 0, 0, 0, 0, 0, 0, 0, 0], outputs: [0, 0, 0, 0, 0] },
-            { inputs: [1, 0, 0, 0, 0, 0, 1, 1, 0], outputs: [0, 1, 0, 1, 0] },
-            { inputs: [0, 0, 1, 1, 0, 1, 0, 0, 0], outputs: [1, 1, 1, 1, 1] }
-        ],
-        expressions: [
-            { output: "Di", formula: "Ai ⊕ Bi ⊕ Bi_in" },
-            { output: "Bi_out", formula: "Ai'·Bi + Bi_in·(Ai ⊕ Bi)'" }
-        ],
-        renderSchematic: (inp, out) => {
-            const b0 = inp.Bin;
-            const b1 = ((1 - inp.A0) & inp.B0) | ((1 - (inp.A0 ^ inp.B0)) & b0);
-            const b2 = ((1 - inp.A1) & inp.B1) | ((1 - (inp.A1 ^ inp.B1)) & b1);
-            const b3 = ((1 - inp.A2) & inp.B2) | ((1 - (inp.A2 ^ inp.B2)) & b2);
-            const bout = out.Bout;
-            const stages = [
-                { id: 0, a: inp.A0, b: inp.B0, bin: b0, d: out.D0, bout: b1, x: 590 },
-                { id: 1, a: inp.A1, b: inp.B1, bin: b1, d: out.D1, bout: b2, x: 430 },
-                { id: 2, a: inp.A2, b: inp.B2, bin: b2, d: out.D2, bout: b3, x: 270 },
-                { id: 3, a: inp.A3, b: inp.B3, bin: b3, d: out.D3, bout: bout, x: 110 }
-            ];
-            let svg = `<svg width="780" height="270" viewBox="0 0 780 270" class="circuit-svg">`;
-            stages.forEach((st, idx) => {
-                svg += `
+    truthTable: [
+      { inputs: [0, 0, 0, 0, 0, 0, 0, 0, 0], outputs: [0, 0, 0, 0, 0] },
+      { inputs: [1, 0, 0, 0, 0, 0, 1, 1, 0], outputs: [0, 1, 0, 1, 0] },
+      { inputs: [0, 0, 1, 1, 0, 1, 0, 0, 0], outputs: [1, 1, 1, 1, 1] }
+    ],
+    expressions: [
+      { output: "Di", formula: "Ai \u2295 Bi \u2295 Bi_in" },
+      { output: "Bi_out", formula: "Ai'\xB7Bi + Bi_in\xB7(Ai \u2295 Bi)'" }
+    ],
+    renderSchematic: (inp, out) => {
+      const b0 = inp.Bin;
+      const b1 = 1 - inp.A0 & inp.B0 | 1 - (inp.A0 ^ inp.B0) & b0;
+      const b2 = 1 - inp.A1 & inp.B1 | 1 - (inp.A1 ^ inp.B1) & b1;
+      const b3 = 1 - inp.A2 & inp.B2 | 1 - (inp.A2 ^ inp.B2) & b2;
+      const bout = out.Bout;
+      const stages = [
+        { id: 0, a: inp.A0, b: inp.B0, bin: b0, d: out.D0, bout: b1, x: 590 },
+        { id: 1, a: inp.A1, b: inp.B1, bin: b1, d: out.D1, bout: b2, x: 430 },
+        { id: 2, a: inp.A2, b: inp.B2, bin: b2, d: out.D2, bout: b3, x: 270 },
+        { id: 3, a: inp.A3, b: inp.B3, bin: b3, d: out.D3, bout, x: 110 }
+      ];
+      let svg = `<svg width="780" height="270" viewBox="0 0 780 270" class="circuit-svg">`;
+      stages.forEach((st, idx) => {
+        svg += `
                     <g transform="translate(${st.x}, 50)">
                         <rect width="110" height="130" rx="12" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2" />
                         <text x="55" y="35" text-anchor="middle" font-weight="800" font-size="14" fill="var(--text-primary)">FS ${st.id}</text>
@@ -596,24 +564,24 @@ endmodule`
                     ${wireV(st.x + 55, 180, 230, st.d)}
                     <text x="${st.x + 55}" y="248" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)">D${st.id} = ${st.d}</text>
                 `;
-                if (idx < 3) {
-                    const nextX = stages[idx + 1].x;
-                    svg += `
+        if (idx < 3) {
+          const nextX = stages[idx + 1].x;
+          svg += `
                         <line x1="${st.x}" y1="115" x2="${nextX + 110}" y2="115" class="${st.bout ? "wire-active" : "wire-inactive"}" stroke-width="2.2" />
                         <text x="${(st.x + nextX + 110) / 2}" y="105" text-anchor="middle" font-size="11" font-weight="750" fill="var(--text-muted)">B${st.id + 1}=${st.bout}</text>
                     `;
-                }
-            });
-            svg += `
+        }
+      });
+      svg += `
                 ${wireHopH(700, 760, 115, [], b0)}
                 <text x="765" y="120" font-weight="800" font-size="13" fill="var(--text-primary)">Bin</text>
                 ${wireHopH(40, 110, 115, [], bout)}
                 <text x="10" y="120" font-weight="800" font-size="13" fill="var(--text-primary)">Bout</text>
             `;
-            svg += `</svg>`;
-            return svg;
-        },
-        verilogModule: `module subtractor_4bit (
+      svg += `</svg>`;
+      return svg;
+    },
+    verilogModule: `module subtractor_4bit (
     input  wire [3:0] A,
     input  wire [3:0] B,
     input  wire       Bin,
@@ -624,28 +592,29 @@ endmodule`
     assign Diff = full_diff[3:0];
     assign Bout = full_diff[4];
 endmodule`
-    },
-    // 3. MULTIPLEXERS
-    mux_2to1: {
-        id: "mux_2to1",
-        title: "2:1 Multiplexer",
-        description: "Selects between 2 data inputs (I0, I1) based on select line S0.",
-        inputs: ["I0", "I1", "S0"],
-        outputs: ["Y"],
-        evaluate: (inp) => ({ "Y": inp.S0 === 0 ? inp.I0 : inp.I1 }),
-        truthTable: [
-            { inputs: [0, 0, 0], outputs: [0] },
-            { inputs: [1, 0, 0], outputs: [1] },
-            { inputs: [0, 1, 1], outputs: [1] },
-            { inputs: [1, 1, 1], outputs: [1] }
-        ],
-        expressions: [{ output: "Y", formula: "S0'·I0 + S0·I1" }],
-        renderSchematic: (inp, out) => {
-            const i0 = inp.I0, i1 = inp.I1, s0 = inp.S0, y = out.Y;
-            const notS0 = 1 - s0;
-            const and0 = i0 & notS0;
-            const and1 = i1 & s0;
-            return `
+  };
+
+  // Web2/src/circuits/mux.ts
+  var mux_2to1 = {
+    id: "mux_2to1",
+    title: "2:1 Multiplexer",
+    description: "Selects between 2 data inputs (I0, I1) based on select line S0.",
+    inputs: ["I0", "I1", "S0"],
+    outputs: ["Y"],
+    evaluate: (inp) => ({ "Y": inp.S0 === 0 ? inp.I0 : inp.I1 }),
+    truthTable: [
+      { inputs: [0, 0, 0], outputs: [0] },
+      { inputs: [1, 0, 0], outputs: [1] },
+      { inputs: [0, 1, 1], outputs: [1] },
+      { inputs: [1, 1, 1], outputs: [1] }
+    ],
+    expressions: [{ output: "Y", formula: "S0'\xB7I0 + S0\xB7I1" }],
+    renderSchematic: (inp, out) => {
+      const i0 = inp.I0, i1 = inp.I1, s0 = inp.S0, y = out.Y;
+      const notS0 = 1 - s0;
+      const and0 = i0 & notS0;
+      const and1 = i1 & s0;
+      return `
                 <svg width="620" height="260" viewBox="0 0 620 260" class="circuit-svg">
                     <!-- Control Inverter -->
                     ${gateNOT(110, 208)}
@@ -685,8 +654,8 @@ endmodule`
                     <text x="575" y="115" font-weight="800" font-size="15" fill="var(--text-primary)">Y = ${y}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module mux_2to1 (
+    },
+    verilogModule: `module mux_2to1 (
     input  wire I0,
     input  wire I1,
     input  wire S0,
@@ -694,43 +663,43 @@ endmodule`
 );
     assign Y = S0 ? I1 : I0;
 endmodule`
+  };
+  var mux_4to1 = {
+    id: "mux_4to1",
+    title: "4:1 Multiplexer",
+    description: "Selects 1 of 4 data inputs (I0-I3) using 2 select lines (S1, S0).",
+    inputs: ["I0", "I1", "I2", "I3", "S1", "S0"],
+    outputs: ["Y"],
+    evaluate: (inp) => {
+      const sel = inp.S1 << 1 | inp.S0;
+      const inps = [inp.I0, inp.I1, inp.I2, inp.I3];
+      return { "Y": inps[sel] };
     },
-    mux_4to1: {
-        id: "mux_4to1",
-        title: "4:1 Multiplexer",
-        description: "Selects 1 of 4 data inputs (I0-I3) using 2 select lines (S1, S0).",
-        inputs: ["I0", "I1", "I2", "I3", "S1", "S0"],
-        outputs: ["Y"],
-        evaluate: (inp) => {
-            const sel = (inp.S1 << 1) | inp.S0;
-            const inps = [inp.I0, inp.I1, inp.I2, inp.I3];
-            return { "Y": inps[sel] };
-        },
-        truthTable: [
-            { inputs: [1, 0, 0, 0, 0, 0], outputs: [1] },
-            { inputs: [0, 1, 0, 0, 0, 1], outputs: [1] },
-            { inputs: [0, 0, 1, 0, 1, 0], outputs: [1] },
-            { inputs: [0, 0, 0, 1, 1, 1], outputs: [1] }
-        ],
-        expressions: [{ output: "Y", formula: "S1'·S0'·I0 + S1'·S0·I1 + S1·S0'·I2 + S1·S0·I3" }],
-        renderSchematic: (inp, out) => {
-            const y = out.Y;
-            const sel = (inp.S1 << 1) | inp.S0;
-            return `
+    truthTable: [
+      { inputs: [1, 0, 0, 0, 0, 0], outputs: [1] },
+      { inputs: [0, 1, 0, 0, 0, 1], outputs: [1] },
+      { inputs: [0, 0, 1, 0, 1, 0], outputs: [1] },
+      { inputs: [0, 0, 0, 1, 1, 1], outputs: [1] }
+    ],
+    expressions: [{ output: "Y", formula: "S1'\xB7S0'\xB7I0 + S1'\xB7S0\xB7I1 + S1\xB7S0'\xB7I2 + S1\xB7S0\xB7I3" }],
+    renderSchematic: (inp, out) => {
+      const y = out.Y;
+      const sel = inp.S1 << 1 | inp.S0;
+      return `
                 <svg width="680" height="290" viewBox="0 0 680 290" class="circuit-svg">
                     <!-- Trapezoid MUX Symbol -->
                     <polygon points="260,25 420,55 420,235 260,265" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.5" />
                     <text x="340" y="145" text-anchor="middle" font-weight="800" font-size="16" fill="var(--text-primary)">4:1 MUX</text>
 
-                    ${[0, 1, 2, 3].map(i => {
-                const isHigh = inp[`I${i}`] === 1;
-                const isSel = sel === i;
-                const yPos = 55 + i * 50;
-                return `
+                    ${[0, 1, 2, 3].map((i) => {
+        const isHigh = inp[`I${i}`] === 1;
+        const isSel = sel === i;
+        const yPos = 55 + i * 50;
+        return `
                             ${wireHopH(50, 260, yPos, [], isHigh)}
-                            <text x="25" y="${yPos + 5}" font-weight="800" font-size="13" fill="${isSel ? "var(--accent-secondary)" : "var(--text-primary)"}">I${i}${isSel ? " ★" : ""}</text>
+                            <text x="25" y="${yPos + 5}" font-weight="800" font-size="13" fill="${isSel ? "var(--accent-secondary)" : "var(--text-primary)"}">I${i}${isSel ? " \u2605" : ""}</text>
                         `;
-            }).join("")}
+      }).join("")}
 
                     <!-- Select lines -->
                     ${wireV(310, 255, 275, inp.S1)}
@@ -743,49 +712,49 @@ endmodule`
                     <text x="580" y="150" font-weight="800" font-size="16" fill="var(--text-primary)">Y = ${y}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module mux_4to1 (
+    },
+    verilogModule: `module mux_4to1 (
     input  wire [3:0] I,
     input  wire [1:0] S,
     output wire       Y
 );
     assign Y = I[S];
 endmodule`
+  };
+  var mux_8to1 = {
+    id: "mux_8to1",
+    title: "8:1 Multiplexer",
+    description: "Selects 1 of 8 inputs (I0-I7) using 3 select lines (S2, S1, S0).",
+    inputs: ["I0", "I1", "I2", "I3", "I4", "I5", "I6", "I7", "S2", "S1", "S0"],
+    outputs: ["Y"],
+    evaluate: (inp) => {
+      const sel = inp.S2 << 2 | inp.S1 << 1 | inp.S0;
+      const inps = [inp.I0, inp.I1, inp.I2, inp.I3, inp.I4, inp.I5, inp.I6, inp.I7];
+      return { "Y": inps[sel] };
     },
-    mux_8to1: {
-        id: "mux_8to1",
-        title: "8:1 Multiplexer",
-        description: "Selects 1 of 8 inputs (I0-I7) using 3 select lines (S2, S1, S0).",
-        inputs: ["I0", "I1", "I2", "I3", "I4", "I5", "I6", "I7", "S2", "S1", "S0"],
-        outputs: ["Y"],
-        evaluate: (inp) => {
-            const sel = (inp.S2 << 2) | (inp.S1 << 1) | inp.S0;
-            const inps = [inp.I0, inp.I1, inp.I2, inp.I3, inp.I4, inp.I5, inp.I6, inp.I7];
-            return { "Y": inps[sel] };
-        },
-        truthTable: [
-            { inputs: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], outputs: [1] },
-            { inputs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1], outputs: [1] },
-            { inputs: [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1], outputs: [1] }
-        ],
-        expressions: [{ output: "Y", formula: "Σ (m_k · I_k) for k = 0..7" }],
-        renderSchematic: (inp, out) => {
-            const y = out.Y;
-            const sel = (inp.S2 << 2) | (inp.S1 << 1) | inp.S0;
-            return `
+    truthTable: [
+      { inputs: [1, 0, 0, 0, 0, 0, 0, 0, 0, 0, 0], outputs: [1] },
+      { inputs: [0, 1, 0, 0, 0, 0, 0, 0, 0, 0, 1], outputs: [1] },
+      { inputs: [0, 0, 0, 0, 0, 0, 0, 1, 1, 1, 1], outputs: [1] }
+    ],
+    expressions: [{ output: "Y", formula: "\u03A3 (m_k \xB7 I_k) for k = 0..7" }],
+    renderSchematic: (inp, out) => {
+      const y = out.Y;
+      const sel = inp.S2 << 2 | inp.S1 << 1 | inp.S0;
+      return `
                 <svg width="720" height="340" viewBox="0 0 720 340" class="circuit-svg">
                     <polygon points="260,20 440,55 440,285 260,320" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.5" />
                     <text x="350" y="170" text-anchor="middle" font-weight="800" font-size="18" fill="var(--text-primary)">8:1 MUX</text>
 
-                    ${[0, 1, 2, 3, 4, 5, 6, 7].map(i => {
-                const isHigh = inp[`I${i}`] === 1;
-                const isSel = sel === i;
-                const yPos = 38 + i * 36;
-                return `
+                    ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const isHigh = inp[`I${i}`] === 1;
+        const isSel = sel === i;
+        const yPos = 38 + i * 36;
+        return `
                             ${wireHopH(50, 260, yPos, [], isHigh)}
-                            <text x="25" y="${yPos + 4}" font-weight="800" font-size="12" fill="${isSel ? "var(--accent-secondary)" : "var(--text-primary)"}">I${i}${isSel ? " ★" : ""}</text>
+                            <text x="25" y="${yPos + 4}" font-weight="800" font-size="12" fill="${isSel ? "var(--accent-secondary)" : "var(--text-primary)"}">I${i}${isSel ? " \u2605" : ""}</text>
                         `;
-            }).join("")}
+      }).join("")}
 
                     ${wireV(310, 310, 330, inp.S2)}
                     <text x="310" y="338" text-anchor="middle" font-weight="800" font-size="11" fill="var(--text-primary)">S2</text>
@@ -798,38 +767,39 @@ endmodule`
                     <text x="600" y="175" font-weight="800" font-size="16" fill="var(--text-primary)">Y = ${y}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module mux_8to1 (
+    },
+    verilogModule: `module mux_8to1 (
     input  wire [7:0] I,
     input  wire [2:0] S,
     output wire       Y
 );
     assign Y = I[S];
 endmodule`
-    },
-    // 4. DEMULTIPLEXERS
-    demux_1to2: {
-        id: "demux_1to2",
-        title: "1:2 Demultiplexer",
-        description: "Directs input data Din to 1 of 2 outputs based on S0.",
-        inputs: ["Din", "S0"],
-        outputs: ["Y0", "Y1"],
-        evaluate: (inp) => ({
-            "Y0": inp.S0 === 0 ? inp.Din : 0,
-            "Y1": inp.S0 === 1 ? inp.Din : 0
-        }),
-        truthTable: [
-            { inputs: [1, 0], outputs: [1, 0] },
-            { inputs: [1, 1], outputs: [0, 1] },
-            { inputs: [0, 0], outputs: [0, 0] }
-        ],
-        expressions: [
-            { output: "Y0", formula: "S0' · Din" },
-            { output: "Y1", formula: "S0 · Din" }
-        ],
-        renderSchematic: (inp, out) => {
-            const din = inp.Din, s0 = inp.S0;
-            return `
+  };
+
+  // Web2/src/circuits/demux.ts
+  var demux_1to2 = {
+    id: "demux_1to2",
+    title: "1:2 Demultiplexer",
+    description: "Directs input data Din to 1 of 2 outputs based on S0.",
+    inputs: ["Din", "S0"],
+    outputs: ["Y0", "Y1"],
+    evaluate: (inp) => ({
+      "Y0": inp.S0 === 0 ? inp.Din : 0,
+      "Y1": inp.S0 === 1 ? inp.Din : 0
+    }),
+    truthTable: [
+      { inputs: [1, 0], outputs: [1, 0] },
+      { inputs: [1, 1], outputs: [0, 1] },
+      { inputs: [0, 0], outputs: [0, 0] }
+    ],
+    expressions: [
+      { output: "Y0", formula: "S0' \xB7 Din" },
+      { output: "Y1", formula: "S0 \xB7 Din" }
+    ],
+    renderSchematic: (inp, out) => {
+      const din = inp.Din, s0 = inp.S0;
+      return `
                 <svg width="600" height="240" viewBox="0 0 600 240" class="circuit-svg">
                     <polygon points="220,60 360,30 360,210 220,180" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.5" />
                     <text x="290" y="125" text-anchor="middle" font-weight="800" font-size="16" fill="var(--text-primary)">1:2 DEMUX</text>
@@ -847,8 +817,8 @@ endmodule`
                     <text x="500" y="170" font-weight="800" font-size="14" fill="var(--text-primary)">Y1 = ${out.Y1}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module demux_1to2 (
+    },
+    verilogModule: `module demux_1to2 (
     input  wire Din,
     input  wire S0,
     output wire Y0,
@@ -857,36 +827,36 @@ endmodule`
     assign Y0 = (~S0) & Din;
     assign Y1 = S0 & Din;
 endmodule`
+  };
+  var demux_1to4 = {
+    id: "demux_1to4",
+    title: "1:4 Demultiplexer",
+    description: "Distributes 1 data input (Din) to 1 of 4 outputs (Y0-Y3) using select lines (S1, S0).",
+    inputs: ["Din", "S1", "S0"],
+    outputs: ["Y0", "Y1", "Y2", "Y3"],
+    evaluate: (inp) => {
+      const sel = inp.S1 << 1 | inp.S0;
+      return {
+        "Y0": sel === 0 ? inp.Din : 0,
+        "Y1": sel === 1 ? inp.Din : 0,
+        "Y2": sel === 2 ? inp.Din : 0,
+        "Y3": sel === 3 ? inp.Din : 0
+      };
     },
-    demux_1to4: {
-        id: "demux_1to4",
-        title: "1:4 Demultiplexer",
-        description: "Distributes 1 data input (Din) to 1 of 4 outputs (Y0-Y3) using select lines (S1, S0).",
-        inputs: ["Din", "S1", "S0"],
-        outputs: ["Y0", "Y1", "Y2", "Y3"],
-        evaluate: (inp) => {
-            const sel = (inp.S1 << 1) | inp.S0;
-            return {
-                "Y0": sel === 0 ? inp.Din : 0,
-                "Y1": sel === 1 ? inp.Din : 0,
-                "Y2": sel === 2 ? inp.Din : 0,
-                "Y3": sel === 3 ? inp.Din : 0
-            };
-        },
-        truthTable: [
-            { inputs: [1, 0, 0], outputs: [1, 0, 0, 0] },
-            { inputs: [1, 0, 1], outputs: [0, 1, 0, 0] },
-            { inputs: [1, 1, 0], outputs: [0, 0, 1, 0] },
-            { inputs: [1, 1, 1], outputs: [0, 0, 0, 1] }
-        ],
-        expressions: [
-            { output: "Y0", formula: "S1'·S0'·Din" },
-            { output: "Y1", formula: "S1'·S0·Din" },
-            { output: "Y2", formula: "S1·S0'·Din" },
-            { output: "Y3", formula: "S1·S0·Din" }
-        ],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [1, 0, 0], outputs: [1, 0, 0, 0] },
+      { inputs: [1, 0, 1], outputs: [0, 1, 0, 0] },
+      { inputs: [1, 1, 0], outputs: [0, 0, 1, 0] },
+      { inputs: [1, 1, 1], outputs: [0, 0, 0, 1] }
+    ],
+    expressions: [
+      { output: "Y0", formula: "S1'\xB7S0'\xB7Din" },
+      { output: "Y1", formula: "S1'\xB7S0\xB7Din" },
+      { output: "Y2", formula: "S1\xB7S0'\xB7Din" },
+      { output: "Y3", formula: "S1\xB7S0\xB7Din" }
+    ],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="640" height="280" viewBox="0 0 640 280" class="circuit-svg">
                     <polygon points="240,60 380,30 380,250 240,220" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.5" />
                     <text x="310" y="145" text-anchor="middle" font-weight="800" font-size="15" fill="var(--text-primary)">1:4 DEMUX</text>
@@ -899,18 +869,18 @@ endmodule`
                     ${wireV(330, 235, 265, inp.S0)}
                     <text x="330" y="275" text-anchor="middle" font-weight="800" font-size="11" fill="var(--text-primary)">S0</text>
 
-                    ${[0, 1, 2, 3].map(i => {
-                const yVal = out[`Y${i}`];
-                const yPos = 65 + i * 45;
-                return `
+                    ${[0, 1, 2, 3].map((i) => {
+        const yVal = out[`Y${i}`];
+        const yPos = 65 + i * 45;
+        return `
                             ${wireHopH(380, 520, yPos, [], yVal)}
                             <text x="540" y="${yPos + 5}" font-weight="800" font-size="14" fill="var(--text-primary)">Y${i} = ${yVal}</text>
                         `;
-            }).join("")}
+      }).join("")}
                 </svg>
             `;
-        },
-        verilogModule: `module demux_1to4 (
+    },
+    verilogModule: `module demux_1to4 (
     input  wire       Din,
     input  wire [1:0] S,
     output reg  [3:0] Y
@@ -920,28 +890,27 @@ endmodule`
         Y[S] = Din;
     end
 endmodule`
+  };
+  var demux_1to8 = {
+    id: "demux_1to8",
+    title: "1:8 Demultiplexer",
+    description: "Distributes 1 data input (Din) to 1 of 8 outputs (Y0-Y7) using select lines (S2, S1, S0).",
+    inputs: ["Din", "S2", "S1", "S0"],
+    outputs: ["Y0", "Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7"],
+    evaluate: (inp) => {
+      const sel = inp.S2 << 2 | inp.S1 << 1 | inp.S0;
+      const res = {};
+      for (let i = 0; i < 8; i++) res[`Y${i}`] = sel === i && inp.Din === 1 ? 1 : 0;
+      return res;
     },
-    demux_1to8: {
-        id: "demux_1to8",
-        title: "1:8 Demultiplexer",
-        description: "Distributes 1 data input (Din) to 1 of 8 outputs (Y0-Y7) using select lines (S2, S1, S0).",
-        inputs: ["Din", "S2", "S1", "S0"],
-        outputs: ["Y0", "Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7"],
-        evaluate: (inp) => {
-            const sel = (inp.S2 << 2) | (inp.S1 << 1) | inp.S0;
-            const res = {};
-            for (let i = 0; i < 8; i++)
-                res[`Y${i}`] = (sel === i && inp.Din === 1) ? 1 : 0;
-            return res;
-        },
-        truthTable: [
-            { inputs: [1, 0, 0, 0], outputs: [1, 0, 0, 0, 0, 0, 0, 0] },
-            { inputs: [1, 0, 1, 1], outputs: [0, 0, 0, 1, 0, 0, 0, 0] },
-            { inputs: [1, 1, 1, 1], outputs: [0, 0, 0, 0, 0, 0, 0, 1] }
-        ],
-        expressions: [{ output: "Yk", formula: "m_k · Din for k = 0..7" }],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [1, 0, 0, 0], outputs: [1, 0, 0, 0, 0, 0, 0, 0] },
+      { inputs: [1, 0, 1, 1], outputs: [0, 0, 0, 1, 0, 0, 0, 0] },
+      { inputs: [1, 1, 1, 1], outputs: [0, 0, 0, 0, 0, 0, 0, 1] }
+    ],
+    expressions: [{ output: "Yk", formula: "m_k \xB7 Din for k = 0..7" }],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="720" height="340" viewBox="0 0 720 340" class="circuit-svg">
                     <polygon points="260,55 440,20 440,320 260,285" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.5" />
                     <text x="350" y="170" text-anchor="middle" font-weight="800" font-size="18" fill="var(--text-primary)">1:8 DEMUX</text>
@@ -956,18 +925,18 @@ endmodule`
                     ${wireV(390, 310, 330, inp.S0)}
                     <text x="390" y="338" text-anchor="middle" font-weight="800" font-size="11" fill="var(--text-primary)">S0</text>
 
-                    ${[0, 1, 2, 3, 4, 5, 6, 7].map(i => {
-                const yVal = out[`Y${i}`];
-                const yPos = 38 + i * 36;
-                return `
+                    ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const yVal = out[`Y${i}`];
+        const yPos = 38 + i * 36;
+        return `
                             ${wireHopH(440, 580, yPos, [], yVal)}
                             <text x="600" y="${yPos + 4}" font-weight="800" font-size="12" fill="var(--text-primary)">Y${i} = ${yVal}</text>
                         `;
-            }).join("")}
+      }).join("")}
                 </svg>
             `;
-        },
-        verilogModule: `module demux_1to8 (
+    },
+    verilogModule: `module demux_1to8 (
     input  wire       Din,
     input  wire [2:0] S,
     output reg  [7:0] Y
@@ -977,40 +946,40 @@ endmodule`
         Y[S] = Din;
     end
 endmodule`
+  };
+
+  // Web2/src/circuits/decoders.ts
+  var decoder_2to4 = {
+    id: "decoder_2to4",
+    title: "2-to-4 Line Decoder",
+    description: "Decodes 2-bit binary code (A1, A0) into 4 active-high one-hot outputs (Y0-Y3).",
+    inputs: ["A1", "A0", "Enable"],
+    outputs: ["Y0", "Y1", "Y2", "Y3"],
+    evaluate: (inp) => {
+      if (inp.Enable === 0) return { "Y0": 0, "Y1": 0, "Y2": 0, "Y3": 0 };
+      const code = inp.A1 << 1 | inp.A0;
+      return {
+        "Y0": code === 0 ? 1 : 0,
+        "Y1": code === 1 ? 1 : 0,
+        "Y2": code === 2 ? 1 : 0,
+        "Y3": code === 3 ? 1 : 0
+      };
     },
-    // 5. DECODERS & ENCODERS
-    decoder_2to4: {
-        id: "decoder_2to4",
-        title: "2-to-4 Line Decoder",
-        description: "Decodes 2-bit binary code (A1, A0) into 4 active-high one-hot outputs (Y0-Y3).",
-        inputs: ["A1", "A0", "Enable"],
-        outputs: ["Y0", "Y1", "Y2", "Y3"],
-        evaluate: (inp) => {
-            if (inp.Enable === 0)
-                return { "Y0": 0, "Y1": 0, "Y2": 0, "Y3": 0 };
-            const code = (inp.A1 << 1) | inp.A0;
-            return {
-                "Y0": code === 0 ? 1 : 0,
-                "Y1": code === 1 ? 1 : 0,
-                "Y2": code === 2 ? 1 : 0,
-                "Y3": code === 3 ? 1 : 0
-            };
-        },
-        truthTable: [
-            { inputs: [0, 0, 1], outputs: [1, 0, 0, 0] },
-            { inputs: [0, 1, 1], outputs: [0, 1, 0, 0] },
-            { inputs: [1, 0, 1], outputs: [0, 0, 1, 0] },
-            { inputs: [1, 1, 1], outputs: [0, 0, 0, 1] },
-            { inputs: [0, 0, 0], outputs: [0, 0, 0, 0] }
-        ],
-        expressions: [
-            { output: "Y0", formula: "En·A1'·A0'" },
-            { output: "Y1", formula: "En·A1'·A0" },
-            { output: "Y2", formula: "En·A1·A0'" },
-            { output: "Y3", formula: "En·A1·A0" }
-        ],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [0, 0, 1], outputs: [1, 0, 0, 0] },
+      { inputs: [0, 1, 1], outputs: [0, 1, 0, 0] },
+      { inputs: [1, 0, 1], outputs: [0, 0, 1, 0] },
+      { inputs: [1, 1, 1], outputs: [0, 0, 0, 1] },
+      { inputs: [0, 0, 0], outputs: [0, 0, 0, 0] }
+    ],
+    expressions: [
+      { output: "Y0", formula: "En\xB7A1'\xB7A0'" },
+      { output: "Y1", formula: "En\xB7A1'\xB7A0" },
+      { output: "Y2", formula: "En\xB7A1\xB7A0'" },
+      { output: "Y3", formula: "En\xB7A1\xB7A0" }
+    ],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="640" height="280" viewBox="0 0 640 280" class="circuit-svg">
                     <rect x="220" y="30" width="180" height="220" rx="14" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
                     <text x="310" y="130" text-anchor="middle" font-weight="800" font-size="16" fill="var(--text-primary)">2:4 Decoder</text>
@@ -1023,49 +992,47 @@ endmodule`
                     ${wireHopH(50, 220, 200, [], inp.Enable)}
                     <text x="25" y="205" font-weight="800" font-size="14" fill="var(--text-primary)">EN</text>
 
-                    ${[0, 1, 2, 3].map(i => {
-                const yVal = out[`Y${i}`];
-                const yPos = 65 + i * 45;
-                return `
+                    ${[0, 1, 2, 3].map((i) => {
+        const yVal = out[`Y${i}`];
+        const yPos = 65 + i * 45;
+        return `
                             ${wireHopH(400, 520, yPos, [], yVal)}
                             <text x="540" y="${yPos + 5}" font-weight="800" font-size="14" fill="var(--text-primary)">Y${i} = ${yVal}</text>
                         `;
-            }).join("")}
+      }).join("")}
                 </svg>
             `;
-        },
-        verilogModule: `module decoder_2to4 (
+    },
+    verilogModule: `module decoder_2to4 (
     input  wire [1:0] A,
     input  wire       Enable,
     output wire [3:0] Y
 );
     assign Y = Enable ? (4'b0001 << A) : 4'b0000;
 endmodule`
+  };
+  var decoder_3to8 = {
+    id: "decoder_3to8",
+    title: "3-to-8 Line Decoder",
+    description: "Decodes 3-bit binary code (A2, A1, A0) into 8 active-high outputs with Enable.",
+    inputs: ["A2", "A1", "A0", "Enable"],
+    outputs: ["Y0", "Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7"],
+    evaluate: (inp) => {
+      if (inp.Enable === 0) return { "Y0": 0, "Y1": 0, "Y2": 0, "Y3": 0, "Y4": 0, "Y5": 0, "Y6": 0, "Y7": 0 };
+      const code = inp.A2 << 2 | inp.A1 << 1 | inp.A0;
+      const res = {};
+      for (let i = 0; i < 8; i++) res[`Y${i}`] = code === i ? 1 : 0;
+      return res;
     },
-    decoder_3to8: {
-        id: "decoder_3to8",
-        title: "3-to-8 Line Decoder",
-        description: "Decodes 3-bit binary code (A2, A1, A0) into 8 active-high outputs with Enable.",
-        inputs: ["A2", "A1", "A0", "Enable"],
-        outputs: ["Y0", "Y1", "Y2", "Y3", "Y4", "Y5", "Y6", "Y7"],
-        evaluate: (inp) => {
-            if (inp.Enable === 0)
-                return { "Y0": 0, "Y1": 0, "Y2": 0, "Y3": 0, "Y4": 0, "Y5": 0, "Y6": 0, "Y7": 0 };
-            const code = (inp.A2 << 2) | (inp.A1 << 1) | inp.A0;
-            const res = {};
-            for (let i = 0; i < 8; i++)
-                res[`Y${i}`] = code === i ? 1 : 0;
-            return res;
-        },
-        truthTable: [
-            { inputs: [0, 0, 0, 1], outputs: [1, 0, 0, 0, 0, 0, 0, 0] },
-            { inputs: [0, 1, 1, 1], outputs: [0, 0, 0, 1, 0, 0, 0, 0] },
-            { inputs: [1, 1, 1, 1], outputs: [0, 0, 0, 0, 0, 0, 0, 1] },
-            { inputs: [0, 0, 0, 0], outputs: [0, 0, 0, 0, 0, 0, 0, 0] }
-        ],
-        expressions: [{ output: "Yk", formula: "En · m_k for k = 0..7" }],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [0, 0, 0, 1], outputs: [1, 0, 0, 0, 0, 0, 0, 0] },
+      { inputs: [0, 1, 1, 1], outputs: [0, 0, 0, 1, 0, 0, 0, 0] },
+      { inputs: [1, 1, 1, 1], outputs: [0, 0, 0, 0, 0, 0, 0, 1] },
+      { inputs: [0, 0, 0, 0], outputs: [0, 0, 0, 0, 0, 0, 0, 0] }
+    ],
+    expressions: [{ output: "Yk", formula: "En \xB7 m_k for k = 0..7" }],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="720" height="340" viewBox="0 0 720 340" class="circuit-svg">
                     <rect x="240" y="20" width="200" height="300" rx="14" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
                     <text x="340" y="160" text-anchor="middle" font-weight="800" font-size="17" fill="var(--text-primary)">3:8 Decoder</text>
@@ -1080,69 +1047,65 @@ endmodule`
                     ${wireHopH(50, 240, 250, [], inp.Enable)}
                     <text x="25" y="255" font-weight="800" font-size="13" fill="var(--text-primary)">EN</text>
 
-                    ${[0, 1, 2, 3, 4, 5, 6, 7].map(i => {
-                const yVal = out[`Y${i}`];
-                const yPos = 38 + i * 36;
-                return `
+                    ${[0, 1, 2, 3, 4, 5, 6, 7].map((i) => {
+        const yVal = out[`Y${i}`];
+        const yPos = 38 + i * 36;
+        return `
                             ${wireHopH(440, 580, yPos, [], yVal)}
                             <text x="600" y="${yPos + 4}" font-weight="800" font-size="12" fill="var(--text-primary)">Y${i} = ${yVal}</text>
                         `;
-            }).join("")}
+      }).join("")}
                 </svg>
             `;
-        },
-        verilogModule: `module decoder_3to8 (
+    },
+    verilogModule: `module decoder_3to8 (
     input  wire [2:0] A,
     input  wire       Enable,
     output wire [7:0] Y
 );
     assign Y = Enable ? (8'b00000001 << A) : 8'b00000000;
 endmodule`
+  };
+  var priority_encoder_4to2 = {
+    id: "priority_encoder_4to2",
+    title: "4-to-2 Priority Encoder",
+    description: "Encodes highest-order active input into 2-bit binary code with Valid indicator.",
+    inputs: ["D3", "D2", "D1", "D0"],
+    outputs: ["Y1", "Y0", "Valid (V)"],
+    evaluate: (inp) => {
+      if (inp.D3 === 1) return { "Y1": 1, "Y0": 1, "Valid (V)": 1 };
+      if (inp.D2 === 1) return { "Y1": 1, "Y0": 0, "Valid (V)": 1 };
+      if (inp.D1 === 1) return { "Y1": 0, "Y0": 1, "Valid (V)": 1 };
+      if (inp.D0 === 1) return { "Y1": 0, "Y0": 0, "Valid (V)": 1 };
+      return { "Y1": 0, "Y0": 0, "Valid (V)": 0 };
     },
-    priority_encoder_4to2: {
-        id: "priority_encoder_4to2",
-        title: "4-to-2 Priority Encoder",
-        description: "Encodes highest-order active input into 2-bit binary code with Valid indicator.",
-        inputs: ["D3", "D2", "D1", "D0"],
-        outputs: ["Y1", "Y0", "Valid (V)"],
-        evaluate: (inp) => {
-            if (inp.D3 === 1)
-                return { "Y1": 1, "Y0": 1, "Valid (V)": 1 };
-            if (inp.D2 === 1)
-                return { "Y1": 1, "Y0": 0, "Valid (V)": 1 };
-            if (inp.D1 === 1)
-                return { "Y1": 0, "Y0": 1, "Valid (V)": 1 };
-            if (inp.D0 === 1)
-                return { "Y1": 0, "Y0": 0, "Valid (V)": 1 };
-            return { "Y1": 0, "Y0": 0, "Valid (V)": 0 };
-        },
-        truthTable: [
-            { inputs: [0, 0, 0, 0], outputs: [0, 0, 0] },
-            { inputs: [0, 0, 0, 1], outputs: [0, 0, 1] },
-            { inputs: [0, 0, 1, 0], outputs: [0, 1, 1] },
-            { inputs: [0, 1, 0, 0], outputs: [1, 0, 1] },
-            { inputs: [1, 0, 0, 0], outputs: [1, 1, 1] }
-        ],
-        expressions: [
-            { output: "Y1", formula: "D3 + D2" },
-            { output: "Y0", formula: "D3 + D2'·D1" },
-            { output: "Valid (V)", formula: "D3 + D2 + D1 + D0" }
-        ],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [0, 0, 0, 0], outputs: [0, 0, 0] },
+      { inputs: [0, 0, 0, 1], outputs: [0, 0, 1] },
+      { inputs: [0, 0, 1, 0], outputs: [0, 1, 1] },
+      { inputs: [0, 1, 0, 0], outputs: [1, 0, 1] },
+      { inputs: [1, 0, 0, 0], outputs: [1, 1, 1] }
+    ],
+    expressions: [
+      { output: "Y1", formula: "D3 + D2" },
+      { output: "Y0", formula: "D3 + D2'\xB7D1" },
+      { output: "Valid (V)", formula: "D3 + D2 + D1 + D0" }
+    ],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="640" height="280" viewBox="0 0 640 280" class="circuit-svg">
                     <rect x="220" y="30" width="180" height="220" rx="14" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
                     <text x="310" y="130" text-anchor="middle" font-weight="800" font-size="16" fill="var(--text-primary)">4:2 Encoder</text>
                     <text x="310" y="152" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-muted)">Priority Tree</text>
 
                     ${[3, 2, 1, 0].map((d, i) => {
-                const isHigh = inp[`D${d}`] === 1;
-                const yPos = 60 + i * 45;
-                return `
+        const isHigh = inp[`D${d}`] === 1;
+        const yPos = 60 + i * 45;
+        return `
                             ${wireHopH(50, 220, yPos, [], isHigh)}
                             <text x="25" y="${yPos + 5}" font-weight="800" font-size="14" fill="var(--text-primary)">D${d}</text>
                         `;
-            }).join("")}
+      }).join("")}
 
                     ${wireHopH(400, 520, 80, [], out.Y1)}
                     <text x="540" y="85" font-weight="800" font-size="14" fill="var(--text-primary)">Y1 = ${out.Y1}</text>
@@ -1152,8 +1115,8 @@ endmodule`
                     <text x="540" y="205" font-weight="800" font-size="14" fill="var(--text-primary)">V = ${out["Valid (V)"]}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module priority_encoder_4to2 (
+    },
+    verilogModule: `module priority_encoder_4to2 (
     input  wire [3:0] D,
     output reg  [1:0] Y,
     output wire       Valid
@@ -1166,48 +1129,48 @@ endmodule`
         else           Y = 2'b00;
     end
 endmodule`
+  };
+  var priority_encoder_8to3 = {
+    id: "priority_encoder_8to3",
+    title: "8-to-3 Priority Encoder",
+    description: "Encodes 8 request inputs into 3-bit binary code with Valid indicator.",
+    inputs: ["D7", "D6", "D5", "D4", "D3", "D2", "D1", "D0"],
+    outputs: ["Y2", "Y1", "Y0", "Valid"],
+    evaluate: (inp) => {
+      for (let i = 7; i >= 0; i--) {
+        if (inp[`D${i}`] === 1) {
+          return {
+            "Y2": i >> 2 & 1,
+            "Y1": i >> 1 & 1,
+            "Y0": i & 1,
+            "Valid": 1
+          };
+        }
+      }
+      return { "Y2": 0, "Y1": 0, "Y0": 0, "Valid": 0 };
     },
-    priority_encoder_8to3: {
-        id: "priority_encoder_8to3",
-        title: "8-to-3 Priority Encoder",
-        description: "Encodes 8 request inputs into 3-bit binary code with Valid indicator.",
-        inputs: ["D7", "D6", "D5", "D4", "D3", "D2", "D1", "D0"],
-        outputs: ["Y2", "Y1", "Y0", "Valid"],
-        evaluate: (inp) => {
-            for (let i = 7; i >= 0; i--) {
-                if (inp[`D${i}`] === 1) {
-                    return {
-                        "Y2": (i >> 2) & 1,
-                        "Y1": (i >> 1) & 1,
-                        "Y0": i & 1,
-                        "Valid": 1
-                    };
-                }
-            }
-            return { "Y2": 0, "Y1": 0, "Y0": 0, "Valid": 0 };
-        },
-        truthTable: [
-            { inputs: [1, 0, 0, 0, 0, 0, 0, 0], outputs: [1, 1, 1, 1] },
-            { inputs: [0, 1, 0, 0, 0, 0, 0, 0], outputs: [1, 1, 0, 1] },
-            { inputs: [0, 0, 0, 0, 0, 0, 1, 0], outputs: [0, 0, 1, 1] },
-            { inputs: [0, 0, 0, 0, 0, 0, 0, 0], outputs: [0, 0, 0, 0] }
-        ],
-        expressions: [{ output: "Y2..Y0", formula: "Priority Encoded MSB to LSB" }],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [1, 0, 0, 0, 0, 0, 0, 0], outputs: [1, 1, 1, 1] },
+      { inputs: [0, 1, 0, 0, 0, 0, 0, 0], outputs: [1, 1, 0, 1] },
+      { inputs: [0, 0, 0, 0, 0, 0, 1, 0], outputs: [0, 0, 1, 1] },
+      { inputs: [0, 0, 0, 0, 0, 0, 0, 0], outputs: [0, 0, 0, 0] }
+    ],
+    expressions: [{ output: "Y2..Y0", formula: "Priority Encoded MSB to LSB" }],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="720" height="340" viewBox="0 0 720 340" class="circuit-svg">
                     <rect x="240" y="20" width="200" height="300" rx="14" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
                     <text x="340" y="160" text-anchor="middle" font-weight="800" font-size="17" fill="var(--text-primary)">8:3 Encoder</text>
                     <text x="340" y="185" text-anchor="middle" font-size="12" font-weight="700" fill="var(--text-muted)">Priority Logic</text>
 
                     ${[7, 6, 5, 4, 3, 2, 1, 0].map((d, i) => {
-                const isHigh = inp[`D${d}`] === 1;
-                const yPos = 38 + i * 36;
-                return `
+        const isHigh = inp[`D${d}`] === 1;
+        const yPos = 38 + i * 36;
+        return `
                             ${wireHopH(50, 240, yPos, [], isHigh)}
                             <text x="25" y="${yPos + 4}" font-weight="800" font-size="12" fill="var(--text-primary)">D${d}</text>
                         `;
-            }).join("")}
+      }).join("")}
 
                     ${wireHopH(440, 580, 80, [], out.Y2)}
                     <text x="600" y="85" font-weight="800" font-size="14" fill="var(--text-primary)">Y2 = ${out.Y2}</text>
@@ -1219,8 +1182,8 @@ endmodule`
                     <text x="600" y="265" font-weight="800" font-size="14" fill="var(--text-primary)">V = ${out.Valid}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module priority_encoder_8to3 (
+    },
+    verilogModule: `module priority_encoder_8to3 (
     input  wire [7:0] D,
     output reg  [2:0] Y,
     output wire       Valid
@@ -1237,35 +1200,36 @@ endmodule`
         else           Y = 3'b000;
     end
 endmodule`
-    },
-    // 6. COMPARATORS
-    comparator_1bit: {
-        id: "comparator_1bit",
-        title: "1-Bit Magnitude Comparator",
-        description: "Compares 1-bit inputs A and B producing A > B, A = B, and A < B.",
-        inputs: ["A", "B"],
-        outputs: ["A > B", "A = B", "A < B"],
-        evaluate: (inp) => ({
-            "A > B": inp.A > inp.B ? 1 : 0,
-            "A = B": inp.A === inp.B ? 1 : 0,
-            "A < B": inp.A < inp.B ? 1 : 0
-        }),
-        truthTable: [
-            { inputs: [0, 0], outputs: [0, 1, 0] },
-            { inputs: [0, 1], outputs: [0, 0, 1] },
-            { inputs: [1, 0], outputs: [1, 0, 0] },
-            { inputs: [1, 1], outputs: [0, 1, 0] }
-        ],
-        expressions: [
-            { output: "A = B", formula: "A ⊙ B" },
-            { output: "A > B", formula: "A · B'" },
-            { output: "A < B", formula: "A' · B" }
-        ],
-        renderSchematic: (inp, out) => {
-            const a = inp.A, b = inp.B;
-            const notA = 1 - a, notB = 1 - b;
-            const eq = out["A = B"], gt = out["A > B"], lt = out["A < B"];
-            return `
+  };
+
+  // Web2/src/circuits/comparators.ts
+  var comparator_1bit = {
+    id: "comparator_1bit",
+    title: "1-Bit Magnitude Comparator",
+    description: "Compares 1-bit inputs A and B producing A > B, A = B, and A < B.",
+    inputs: ["A", "B"],
+    outputs: ["A > B", "A = B", "A < B"],
+    evaluate: (inp) => ({
+      "A > B": inp.A > inp.B ? 1 : 0,
+      "A = B": inp.A === inp.B ? 1 : 0,
+      "A < B": inp.A < inp.B ? 1 : 0
+    }),
+    truthTable: [
+      { inputs: [0, 0], outputs: [0, 1, 0] },
+      { inputs: [0, 1], outputs: [0, 0, 1] },
+      { inputs: [1, 0], outputs: [1, 0, 0] },
+      { inputs: [1, 1], outputs: [0, 1, 0] }
+    ],
+    expressions: [
+      { output: "A = B", formula: "A \u2299 B" },
+      { output: "A > B", formula: "A \xB7 B'" },
+      { output: "A < B", formula: "A' \xB7 B" }
+    ],
+    renderSchematic: (inp, out) => {
+      const a = inp.A, b = inp.B;
+      const notA = 1 - a, notB = 1 - b;
+      const eq = out["A = B"], gt = out["A > B"], lt = out["A < B"];
+      return `
                 <svg width="640" height="260" viewBox="0 0 640 260" class="circuit-svg">
                     ${gateAND(280, 35, "AND1")}
                     ${gateXNOR(280, 110, "XNOR")}
@@ -1306,8 +1270,8 @@ endmodule`
                     <text x="520" y="210" font-weight="800" font-size="14" fill="var(--text-primary)">A &lt; B = ${lt}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module comparator_1bit (
+    },
+    verilogModule: `module comparator_1bit (
     input  wire A,
     input  wire B,
     output wire A_gt_B,
@@ -1318,48 +1282,48 @@ endmodule`
     assign A_eq_B = (A == B);
     assign A_lt_B = (A < B);
 endmodule`
+  };
+  var comparator_2bit = {
+    id: "comparator_2bit",
+    title: "2-Bit Magnitude Comparator",
+    description: "Compares two 2-bit words (A1 A0) and (B1 B0), asserting A > B, A = B, or A < B.",
+    inputs: ["A1", "A0", "B1", "B0"],
+    outputs: ["A > B", "A = B", "A < B"],
+    evaluate: (inp) => {
+      const a = inp.A1 << 1 | inp.A0;
+      const b = inp.B1 << 1 | inp.B0;
+      return {
+        "A > B": a > b ? 1 : 0,
+        "A = B": a === b ? 1 : 0,
+        "A < B": a < b ? 1 : 0
+      };
     },
-    comparator_2bit: {
-        id: "comparator_2bit",
-        title: "2-Bit Magnitude Comparator",
-        description: "Compares two 2-bit words (A1 A0) and (B1 B0), asserting A > B, A = B, or A < B.",
-        inputs: ["A1", "A0", "B1", "B0"],
-        outputs: ["A > B", "A = B", "A < B"],
-        evaluate: (inp) => {
-            const a = (inp.A1 << 1) | inp.A0;
-            const b = (inp.B1 << 1) | inp.B0;
-            return {
-                "A > B": a > b ? 1 : 0,
-                "A = B": a === b ? 1 : 0,
-                "A < B": a < b ? 1 : 0
-            };
-        },
-        truthTable: [
-            { inputs: [0, 0, 0, 0], outputs: [0, 1, 0] },
-            { inputs: [1, 0, 0, 1], outputs: [1, 0, 0] },
-            { inputs: [0, 1, 1, 0], outputs: [0, 0, 1] },
-            { inputs: [1, 1, 1, 1], outputs: [0, 1, 0] }
-        ],
-        expressions: [
-            { output: "A = B", formula: "(A1 ⊙ B1) · (A0 ⊙ B0)" },
-            { output: "A > B", formula: "A1·B1' + (A1 ⊙ B1)·A0·B0'" },
-            { output: "A < B", formula: "A1'·B1 + (A1 ⊙ B1)·A0'·B0" }
-        ],
-        renderSchematic: (inp, out) => {
-            return `
+    truthTable: [
+      { inputs: [0, 0, 0, 0], outputs: [0, 1, 0] },
+      { inputs: [1, 0, 0, 1], outputs: [1, 0, 0] },
+      { inputs: [0, 1, 1, 0], outputs: [0, 0, 1] },
+      { inputs: [1, 1, 1, 1], outputs: [0, 1, 0] }
+    ],
+    expressions: [
+      { output: "A = B", formula: "(A1 \u2299 B1) \xB7 (A0 \u2299 B0)" },
+      { output: "A > B", formula: "A1\xB7B1' + (A1 \u2299 B1)\xB7A0\xB7B0'" },
+      { output: "A < B", formula: "A1'\xB7B1 + (A1 \u2299 B1)\xB7A0'\xB7B0" }
+    ],
+    renderSchematic: (inp, out) => {
+      return `
                 <svg width="660" height="280" viewBox="0 0 660 280" class="circuit-svg">
                     <rect x="220" y="30" width="180" height="220" rx="14" fill="var(--bg-card-alt)" stroke="var(--border-hover)" stroke-width="2.2" />
                     <text x="310" y="130" text-anchor="middle" font-weight="800" font-size="16" fill="var(--text-primary)">2-Bit Comparator</text>
                     <text x="310" y="152" text-anchor="middle" font-size="11" font-weight="700" fill="var(--text-muted)">Magnitude Matrix</text>
 
                     ${["A1", "A0", "B1", "B0"].map((pin, i) => {
-                const isHigh = inp[pin] === 1;
-                const yPos = 60 + i * 45;
-                return `
+        const isHigh = inp[pin] === 1;
+        const yPos = 60 + i * 45;
+        return `
                             ${wireHopH(50, 220, yPos, [], isHigh)}
                             <text x="25" y="${yPos + 5}" font-weight="800" font-size="14" fill="var(--text-primary)">${pin}</text>
                         `;
-            }).join("")}
+      }).join("")}
 
                     ${wireHopH(400, 520, 80, [], out["A > B"])}
                     <text x="540" y="85" font-weight="800" font-size="14" fill="var(--text-primary)">A &gt; B = ${out["A > B"]}</text>
@@ -1369,8 +1333,8 @@ endmodule`
                     <text x="540" y="205" font-weight="800" font-size="14" fill="var(--text-primary)">A &lt; B = ${out["A < B"]}</text>
                 </svg>
             `;
-        },
-        verilogModule: `module comparator_2bit (
+    },
+    verilogModule: `module comparator_2bit (
     input  wire [1:0] A,
     input  wire [1:0] B,
     output wire       A_gt_B,
@@ -1381,379 +1345,395 @@ endmodule`
     assign A_eq_B = (A == B);
     assign A_lt_B = (A < B);
 endmodule`
-    }
-};
-/* =========================================================
-   CATEGORY DEFINITIONS
-========================================================= */
-const CATEGORIES = {
+  };
+
+  // Web2/src/circuits/index.ts
+  var CIRCUITS = {
+    half_adder,
+    full_adder,
+    ripple_carry_adder_4bit,
+    half_subtractor,
+    full_subtractor,
+    subtractor_4bit,
+    mux_2to1,
+    mux_4to1,
+    mux_8to1,
+    demux_1to2,
+    demux_1to4,
+    demux_1to8,
+    decoder_2to4,
+    decoder_3to8,
+    priority_encoder_4to2,
+    priority_encoder_8to3,
+    comparator_1bit,
+    comparator_2bit
+  };
+  var CATEGORIES = {
     adders: {
-        title: "Adders",
-        circuits: ["half_adder", "full_adder", "ripple_carry_adder_4bit"]
+      title: "Adders",
+      circuits: ["half_adder", "full_adder", "ripple_carry_adder_4bit"]
     },
     subtractors: {
-        title: "Subtractors",
-        circuits: ["half_subtractor", "full_subtractor", "subtractor_4bit"]
+      title: "Subtractors",
+      circuits: ["half_subtractor", "full_subtractor", "subtractor_4bit"]
     },
-    multiplexers: {
-        title: "Multiplexers (MUX)",
-        circuits: ["mux_2to1", "mux_4to1", "mux_8to1"]
+    mux: {
+      title: "Multiplexers (MUX)",
+      circuits: ["mux_2to1", "mux_4to1", "mux_8to1"]
     },
-    demultiplexers: {
-        title: "Demultiplexers (DEMUX)",
-        circuits: ["demux_1to2", "demux_1to4", "demux_1to8"]
+    demux: {
+      title: "Demultiplexers (DEMUX)",
+      circuits: ["demux_1to2", "demux_1to4", "demux_1to8"]
     },
-    decoders_encoders: {
-        title: "Decoders & Encoders",
-        circuits: ["decoder_2to4", "decoder_3to8", "priority_encoder_4to2", "priority_encoder_8to3"]
+    decoders: {
+      title: "Decoders & Encoders",
+      circuits: ["decoder_2to4", "decoder_3to8", "priority_encoder_4to2", "priority_encoder_8to3"]
     },
     comparators: {
-        title: "Magnitude Comparators",
-        circuits: ["comparator_1bit", "comparator_2bit"]
+      title: "Magnitude Comparators",
+      circuits: ["comparator_1bit", "comparator_2bit"]
     }
-};
-/* =========================================================
-   DOM ELEMENTS & STATE
-========================================================= */
-const step1 = document.getElementById("step1");
-const step2 = document.getElementById("step2");
-const step3 = document.getElementById("step3");
-const step2Title = document.getElementById("step2Title");
-const subcategoryGrid = document.getElementById("subcategoryGrid");
-const backToStep2 = document.getElementById("backToStep2");
-const circuitTitle = document.getElementById("circuitTitle");
-const inputControls = document.getElementById("inputControls");
-const rippleControls = document.getElementById("rippleControls");
-const rippleAnimateBtn = document.getElementById("rippleAnimateBtn");
-const rippleStepBadge = document.getElementById("rippleStepBadge");
-const circuitDiagram = document.getElementById("circuitDiagram");
-const truthTable = document.getElementById("truthTable");
-const booleanExpressions = document.getElementById("booleanExpressions");
-const verilogCode = document.getElementById("verilogCode");
-const copyVerilogBtn = document.getElementById("copyVerilogBtn");
-const breadcrumbCategory = document.getElementById("breadcrumbCategory");
-const timingCanvas = document.getElementById("timingCanvas");
-const zoomInBtn = document.getElementById("zoomInBtn");
-const zoomOutBtn = document.getElementById("zoomOutBtn");
-const zoomResetBtn = document.getElementById("zoomResetBtn");
-let currentCategory = null;
-let currentCircuit = null;
-let currentInputs = {};
-let zoomScale = 1.0;
-let panX = 0;
-let panY = 0;
-let isDragging = false;
-let startDragX = 0;
-let startDragY = 0;
-let waveformHistory = [];
-let waveTimeCounter = 0;
-/* =========================================================
-   WAVEFORM TIMING DIAGRAM ANALYZER
-========================================================= */
-function recordWaveformSample() {
-    if (!currentCircuit)
-        return;
-    const outputs = currentCircuit.evaluate(currentInputs);
-    const sample = { ...currentInputs, ...outputs };
-    waveTimeCounter++;
-    waveformHistory.push({ time: waveTimeCounter, signals: sample });
-    if (waveformHistory.length > 25) {
-        waveformHistory.shift();
+  };
+
+  // Web2/src/ui.ts
+  function recordWaveformSample(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    if (!state2.currentCircuit) return;
+    const outputs = state2.currentCircuit.evaluate(state2.currentInputs);
+    const sample = { ...state2.currentInputs, ...outputs };
+    state2.waveTimeCounter++;
+    state2.waveformHistory.push({ time: state2.waveTimeCounter, signals: sample });
+    if (state2.waveformHistory.length > 25) {
+      state2.waveformHistory.shift();
     }
-    drawTimingDiagram();
-}
-function drawTimingDiagram() {
-    if (!timingCanvas || !currentCircuit || waveformHistory.length === 0)
-        return;
-    const ctx = timingCanvas.getContext("2d");
-    if (!ctx)
-        return;
-    const w = timingCanvas.width;
-    const h = timingCanvas.height;
+    drawTimingDiagram(deps2);
+  }
+  function drawTimingDiagram(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    const canvas = els2.timingCanvas;
+    if (!canvas || !state2.currentCircuit || state2.waveformHistory.length === 0) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const w = canvas.width;
+    const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
-    const signalNames = [...currentCircuit.inputs, ...currentCircuit.outputs];
+    const signalNames = [...state2.currentCircuit.inputs, ...state2.currentCircuit.outputs];
     const rowHeight = Math.min(32, Math.floor((h - 20) / signalNames.length));
     const startX = 120;
     const graphWidth = w - startX - 30;
-    const stepX = graphWidth / Math.max(15, waveformHistory.length - 1);
-    // Draw background grid lines
+    const stepX = graphWidth / Math.max(15, state2.waveformHistory.length - 1);
     ctx.strokeStyle = "rgba(255,255,255,0.06)";
     ctx.lineWidth = 1;
     for (let x = startX; x < w - 20; x += 40) {
-        ctx.beginPath();
-        ctx.moveTo(x, 10);
-        ctx.lineTo(x, h - 10);
-        ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(x, 10);
+      ctx.lineTo(x, h - 10);
+      ctx.stroke();
     }
     signalNames.forEach((sigName, sigIdx) => {
-        const topY = 15 + sigIdx * rowHeight;
-        const lowY = topY + rowHeight - 8;
-        const highY = topY + 4;
-        // Label
-        ctx.font = "bold 11px 'JetBrains Mono', Consolas, monospace";
-        ctx.fillStyle = sigIdx < currentCircuit.inputs.length ? "#60a5fa" : "#34d399";
-        ctx.textAlign = "right";
-        ctx.fillText(sigName, startX - 10, lowY - 3);
-        // Waveform Path
-        ctx.strokeStyle = sigIdx < currentCircuit.inputs.length ? "#38bdf8" : "#10b981";
-        ctx.lineWidth = 2.2;
-        ctx.beginPath();
-        waveformHistory.forEach((pt, i) => {
-            const x = startX + i * stepX;
-            const val = pt.signals[sigName] ?? 0;
-            const y = val === 1 ? highY : lowY;
-            if (i === 0) {
-                ctx.moveTo(x, y);
-            }
-            else {
-                const prevVal = waveformHistory[i - 1].signals[sigName] ?? 0;
-                const prevY = prevVal === 1 ? highY : lowY;
-                if (prevY !== y) {
-                    ctx.lineTo(x, prevY); // Vertical clock edge
-                }
-                ctx.lineTo(x, y);
-            }
-        });
-        ctx.stroke();
+      const topY = 15 + sigIdx * rowHeight;
+      const lowY = topY + rowHeight - 8;
+      const highY = topY + 4;
+      ctx.font = "bold 11px 'JetBrains Mono', Consolas, monospace";
+      ctx.fillStyle = sigIdx < state2.currentCircuit.inputs.length ? "#60a5fa" : "#34d399";
+      ctx.textAlign = "right";
+      ctx.fillText(sigName, startX - 10, lowY - 3);
+      ctx.strokeStyle = sigIdx < state2.currentCircuit.inputs.length ? "#38bdf8" : "#10b981";
+      ctx.lineWidth = 2.2;
+      ctx.beginPath();
+      state2.waveformHistory.forEach((pt, i) => {
+        const x = startX + i * stepX;
+        const val = pt.signals[sigName] ?? 0;
+        const y = val === 1 ? highY : lowY;
+        if (i === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevVal = state2.waveformHistory[i - 1].signals[sigName] ?? 0;
+          const prevY = prevVal === 1 ? highY : lowY;
+          if (prevY !== y) {
+            ctx.lineTo(x, prevY);
+          }
+          ctx.lineTo(x, y);
+        }
+      });
+      ctx.stroke();
     });
-}
-/* =========================================================
-   WORKSPACE RENDERER
-========================================================= */
-function loadCircuitWorkspace(circuit) {
-    currentCircuit = circuit;
-    currentInputs = {};
-    circuit.inputs.forEach(inp => { currentInputs[inp] = 0; });
-    waveformHistory = [];
-    waveTimeCounter = 0;
-    circuitTitle.textContent = `${circuit.title} Workspace`;
-    breadcrumbCategory.textContent = `Circuits Simulator / ${circuit.title}`;
-    rippleControls.classList.toggle("hidden", circuit.id !== "ripple_carry_adder_4bit");
-    buildInputButtons();
-    updateCircuitState();
-    buildTruthTable();
-    buildExpressions();
-    step2.classList.add("hidden");
-    step3.classList.remove("hidden");
-    resetZoom();
-}
-function buildInputButtons() {
-    if (!currentCircuit)
-        return;
-    inputControls.innerHTML = currentCircuit.inputs.map(inp => `
+  }
+  function loadCircuitWorkspace(circuit, deps2) {
+    const { state: state2, els: els2 } = deps2;
+    state2.currentCircuit = circuit;
+    state2.currentInputs = {};
+    circuit.inputs.forEach((inp) => {
+      state2.currentInputs[inp] = 0;
+    });
+    state2.waveformHistory = [];
+    state2.waveTimeCounter = 0;
+    els2.circuitTitle.textContent = `${circuit.title} Workspace`;
+    els2.breadcrumbCategory.textContent = `Circuits Simulator / ${circuit.title}`;
+    els2.rippleControls.classList.toggle("hidden", circuit.id !== "ripple_carry_adder_4bit");
+    buildInputButtons(deps2);
+    updateCircuitState(deps2);
+    buildTruthTable(deps2);
+    buildExpressions(deps2);
+    els2.step2.classList.add("hidden");
+    els2.step3.classList.remove("hidden");
+    resetZoom(deps2);
+  }
+  function buildInputButtons(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    if (!state2.currentCircuit) return;
+    els2.inputControls.innerHTML = state2.currentCircuit.inputs.map((inp) => `
         <button type="button" class="input-toggle-btn" data-input="${inp}">
             <span>${inp}</span>
             <span class="input-val-badge">0</span>
         </button>
     `).join("");
-    inputControls.querySelectorAll(".input-toggle-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const inpName = btn.getAttribute("data-input");
-            if (inpName) {
-                currentInputs[inpName] = currentInputs[inpName] === 1 ? 0 : 1;
-                if (window.StudioFX)
-                    window.StudioFX.click(currentInputs[inpName] === 1);
-                updateCircuitState();
-            }
-        });
-    });
-}
-function updateCircuitState(rippleStage = -1) {
-    if (!currentCircuit)
-        return;
-    inputControls.querySelectorAll(".input-toggle-btn").forEach(btn => {
+    els2.inputControls.querySelectorAll(".input-toggle-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
         const inpName = btn.getAttribute("data-input");
         if (inpName) {
-            const isHigh = currentInputs[inpName] === 1;
-            btn.classList.toggle("active", isHigh);
-            const badge = btn.querySelector(".input-val-badge");
-            if (badge)
-                badge.textContent = isHigh ? "1" : "0";
+          state2.currentInputs[inpName] = state2.currentInputs[inpName] === 1 ? 0 : 1;
+          if (deps2.sfx) deps2.sfx.click(state2.currentInputs[inpName] === 1);
+          updateCircuitState(deps2);
         }
+      });
     });
-    const outputs = currentCircuit.evaluate(currentInputs);
-    circuitDiagram.innerHTML = currentCircuit.renderSchematic(currentInputs, outputs, rippleStage);
-    applyZoom();
-    // Highlight active row in Truth Table
-    const inVals = currentCircuit.inputs.map(k => currentInputs[k]);
-    truthTable.querySelectorAll("tbody tr").forEach(tr => {
-        const rowData = tr.getAttribute("data-inputs");
-        if (rowData) {
-            const isMatch = rowData === inVals.join(",");
-            tr.classList.toggle("active-row", isMatch);
-        }
+  }
+  function updateCircuitState(deps2, rippleStage = -1) {
+    const { state: state2, els: els2 } = deps2;
+    if (!state2.currentCircuit) return;
+    els2.inputControls.querySelectorAll(".input-toggle-btn").forEach((btn) => {
+      const inpName = btn.getAttribute("data-input");
+      if (inpName) {
+        const isHigh = state2.currentInputs[inpName] === 1;
+        btn.classList.toggle("active", isHigh);
+        const badge = btn.querySelector(".input-val-badge");
+        if (badge) badge.textContent = isHigh ? "1" : "0";
+      }
     });
-    recordWaveformSample();
-}
-/* =========================================================
-   TRUTH TABLE & EXPRESSIONS
-========================================================= */
-function buildTruthTable() {
-    if (!currentCircuit)
-        return;
-    const inKeys = currentCircuit.inputs;
-    const outKeys = currentCircuit.outputs;
+    const outputs = state2.currentCircuit.evaluate(state2.currentInputs);
+    els2.circuitDiagram.innerHTML = state2.currentCircuit.renderSchematic(state2.currentInputs, outputs, rippleStage);
+    applyZoom(deps2);
+    const inVals = state2.currentCircuit.inputs.map((k) => state2.currentInputs[k]);
+    els2.truthTable.querySelectorAll("tbody tr").forEach((tr) => {
+      const rowData = tr.getAttribute("data-inputs");
+      if (rowData) {
+        tr.classList.toggle("active-row", rowData === inVals.join(","));
+      }
+    });
+    recordWaveformSample(deps2);
+  }
+  function buildTruthTable(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    if (!state2.currentCircuit) return;
+    const inKeys = state2.currentCircuit.inputs;
+    const outKeys = state2.currentCircuit.outputs;
     let html = `<table class="truth-table"><thead><tr>`;
-    inKeys.forEach(k => { html += `<th>${k}</th>`; });
-    outKeys.forEach(k => { html += `<th>${k}</th>`; });
+    inKeys.forEach((k) => {
+      html += `<th>${k}</th>`;
+    });
+    outKeys.forEach((k) => {
+      html += `<th>${k}</th>`;
+    });
     html += `</tr></thead><tbody>`;
-    currentCircuit.truthTable.forEach(row => {
-        html += `<tr data-inputs="${row.inputs.join(",")}">`;
-        row.inputs.forEach(v => { html += `<td>${v}</td>`; });
-        row.outputs.forEach(v => {
-            html += `<td class="${v === 1 ? "tt-one" : "tt-zero"}">${v}</td>`;
-        });
-        html += `</tr>`;
+    state2.currentCircuit.truthTable.forEach((row) => {
+      html += `<tr data-inputs="${row.inputs.join(",")}">`;
+      row.inputs.forEach((v) => {
+        html += `<td>${v}</td>`;
+      });
+      row.outputs.forEach((v) => {
+        html += `<td class="${v === 1 ? "tt-one" : "tt-zero"}">${v}</td>`;
+      });
+      html += `</tr>`;
     });
     html += `</tbody></table>`;
-    truthTable.innerHTML = html;
-}
-function buildExpressions() {
-    if (!currentCircuit)
-        return;
-    booleanExpressions.innerHTML = currentCircuit.expressions.map(exp => `
+    els2.truthTable.innerHTML = html;
+  }
+  function buildExpressions(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    if (!state2.currentCircuit) return;
+    els2.booleanExpressions.innerHTML = state2.currentCircuit.expressions.map((exp) => `
         <div class="expression-card">
             <h3>${exp.output}</h3>
             <div class="expression-formula">${exp.formula}</div>
         </div>
     `).join("");
-    verilogCode.textContent = currentCircuit.verilogModule;
-    copyVerilogBtn.onclick = () => {
-        if (window.StudioFX)
-            window.StudioFX.click(true);
-        navigator.clipboard.writeText(currentCircuit.verilogModule).then(() => {
-            copyVerilogBtn.textContent = "✅ Copied!";
-            copyVerilogBtn.classList.add("copied");
-            setTimeout(() => {
-                copyVerilogBtn.textContent = "📋 Copy Verilog";
-                copyVerilogBtn.classList.remove("copied");
-            }, 1600);
-        });
+    els2.verilogCode.textContent = state2.currentCircuit.verilogModule;
+    els2.copyVerilogBtn.onclick = () => {
+      if (deps2.sfx) deps2.sfx.click(true);
+      navigator.clipboard.writeText(state2.currentCircuit.verilogModule).then(() => {
+        els2.copyVerilogBtn.textContent = "\u2705 Copied!";
+        els2.copyVerilogBtn.classList.add("copied");
+        setTimeout(() => {
+          els2.copyVerilogBtn.textContent = "\u{1F4CB} Copy Verilog";
+          els2.copyVerilogBtn.classList.remove("copied");
+        }, 1600);
+      });
     };
-}
-/* =========================================================
-   RIPPLE CARRY ANIMATION ENGINE
-========================================================= */
-let rippleTimer = null;
-if (rippleAnimateBtn) {
-    rippleAnimateBtn.addEventListener("click", () => {
-        if (rippleTimer)
-            clearTimeout(rippleTimer);
+  }
+  function applyZoom(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    const svg = els2.circuitDiagram.querySelector("svg");
+    if (svg) {
+      svg.style.transform = `translate(${state2.panX}px, ${state2.panY}px) scale(${state2.zoomScale})`;
+    }
+  }
+  function resetZoom(deps2) {
+    deps2.state.zoomScale = 1;
+    deps2.state.panX = 0;
+    deps2.state.panY = 0;
+    applyZoom(deps2);
+  }
+  function setupRippleAnimation(deps2) {
+    const { els: els2 } = deps2;
+    let rippleTimer = null;
+    if (els2.rippleAnimateBtn) {
+      els2.rippleAnimateBtn.addEventListener("click", () => {
+        if (rippleTimer) clearTimeout(rippleTimer);
         let stage = 0;
-        rippleAnimateBtn.disabled = true;
-        if (window.StudioFX)
-            window.StudioFX.relay();
+        els2.rippleAnimateBtn.disabled = true;
+        if (deps2.sfx) deps2.sfx.relay();
         function step() {
-            if (stage <= 3) {
-                rippleStepBadge.textContent = `Stage: Processing FA ${stage}...`;
-                updateCircuitState(stage);
-                if (window.StudioFX)
-                    window.StudioFX.tick();
-                stage++;
-                rippleTimer = setTimeout(step, 650);
-            }
-            else {
-                rippleStepBadge.textContent = "Stage: Complete (Cout Stable)";
-                updateCircuitState(-1);
-                rippleAnimateBtn.disabled = false;
-                if (window.StudioFX)
-                    window.StudioFX.success();
-            }
+          if (stage <= 3) {
+            els2.rippleStepBadge.textContent = `Stage: Processing FA ${stage}...`;
+            updateCircuitState(deps2, stage);
+            if (deps2.sfx) deps2.sfx.tick();
+            stage++;
+            rippleTimer = setTimeout(step, 650);
+          } else {
+            els2.rippleStepBadge.textContent = "Stage: Complete (Cout Stable)";
+            updateCircuitState(deps2, -1);
+            els2.rippleAnimateBtn.disabled = false;
+            if (deps2.sfx) deps2.sfx.success();
+          }
         }
         step();
-    });
-}
-/* =========================================================
-   ZOOM & PAN SCHEMATIC ENGINE
-========================================================= */
-function applyZoom() {
-    const svg = circuitDiagram.querySelector("svg");
-    if (svg) {
-        svg.style.transform = `translate(${panX}px, ${panY}px) scale(${zoomScale})`;
+      });
     }
-}
-function resetZoom() {
-    zoomScale = 1.0;
-    panX = 0;
-    panY = 0;
-    applyZoom();
-}
-zoomInBtn.addEventListener("click", () => {
-    zoomScale = Math.min(2.5, zoomScale + 0.2);
-    applyZoom();
-    if (window.StudioFX)
-        window.StudioFX.click(true);
-});
-zoomOutBtn.addEventListener("click", () => {
-    zoomScale = Math.max(0.4, zoomScale - 0.2);
-    applyZoom();
-    if (window.StudioFX)
-        window.StudioFX.click(false);
-});
-zoomResetBtn.addEventListener("click", resetZoom);
-circuitDiagram.addEventListener("wheel", (e) => {
-    e.preventDefault();
-    const delta = e.deltaY < 0 ? 0.1 : -0.1;
-    zoomScale = Math.min(2.5, Math.max(0.4, zoomScale + delta));
-    applyZoom();
-}, { passive: false });
-circuitDiagram.addEventListener("mousedown", (e) => {
-    if (e.button !== 0)
-        return;
-    isDragging = true;
-    startDragX = e.clientX - panX;
-    startDragY = e.clientY - panY;
-    circuitDiagram.style.cursor = "grabbing";
-});
-window.addEventListener("mousemove", (e) => {
-    if (!isDragging)
-        return;
-    panX = e.clientX - startDragX;
-    panY = e.clientY - startDragY;
-    applyZoom();
-});
-window.addEventListener("mouseup", () => {
-    isDragging = false;
-    circuitDiagram.style.cursor = "grab";
-});
-/* =========================================================
-   CATEGORY & SUBCATEGORY NAVIGATION
-========================================================= */
-document.querySelectorAll(".category-btn").forEach(btn => {
-    btn.addEventListener("click", () => {
+  }
+  function setupNavigation(deps2) {
+    const { els: els2, state: state2, circuits, categories } = deps2;
+    let currentCategory = null;
+    document.querySelectorAll(".category-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
         const catKey = btn.getAttribute("data-category");
-        if (catKey && CATEGORIES[catKey]) {
-            currentCategory = catKey;
-            const cat = CATEGORIES[catKey];
-            step2Title.textContent = `Select a ${cat.title} Model`;
-            breadcrumbCategory.textContent = `Circuits Simulator / ${cat.title}`;
-            subcategoryGrid.innerHTML = cat.circuits.map(cId => {
-                const c = CIRCUITS[cId];
-                return `<button class="subcategory-btn" data-circuit="${cId}">${c.title}</button>`;
-            }).join("");
-            subcategoryGrid.querySelectorAll(".subcategory-btn").forEach(sBtn => {
-                sBtn.addEventListener("click", () => {
-                    const cId = sBtn.getAttribute("data-circuit");
-                    if (cId && CIRCUITS[cId]) {
-                        loadCircuitWorkspace(CIRCUITS[cId]);
-                        if (window.StudioFX)
-                            window.StudioFX.relay();
-                    }
-                });
+        if (catKey && categories[catKey]) {
+          currentCategory = catKey;
+          const cat = categories[catKey];
+          els2.step2Title.textContent = `Select a ${cat.title} Model`;
+          els2.breadcrumbCategory.textContent = `Circuits Simulator / ${cat.title}`;
+          els2.subcategoryGrid.innerHTML = cat.circuits.map((cId) => {
+            const c = circuits[cId];
+            return `<button class="subcategory-btn" data-circuit="${cId}">${c.title}</button>`;
+          }).join("");
+          els2.subcategoryGrid.querySelectorAll(".subcategory-btn").forEach((sBtn) => {
+            sBtn.addEventListener("click", () => {
+              const cId = sBtn.getAttribute("data-circuit");
+              if (cId && circuits[cId]) {
+                loadCircuitWorkspace(circuits[cId], deps2);
+                if (deps2.sfx) deps2.sfx.relay();
+              }
             });
-            step1.classList.add("hidden");
-            step2.classList.remove("hidden");
-            if (window.StudioFX)
-                window.StudioFX.click(true);
+          });
+          els2.step1.classList.add("hidden");
+          els2.step2.classList.remove("hidden");
+          if (deps2.sfx) deps2.sfx.click(true);
         }
+      });
     });
-});
-backToStep2.addEventListener("click", () => {
-    if (rippleTimer)
-        clearTimeout(rippleTimer);
-    step3.classList.add("hidden");
-    step2.classList.remove("hidden");
-    if (currentCategory && CATEGORIES[currentCategory]) {
-        breadcrumbCategory.textContent = `Circuits Simulator / ${CATEGORIES[currentCategory].title}`;
-    }
-});
+    els2.backToStep2.addEventListener("click", () => {
+      els2.step3.classList.add("hidden");
+      els2.step2.classList.remove("hidden");
+      if (currentCategory && categories[currentCategory]) {
+        els2.breadcrumbCategory.textContent = `Circuits Simulator / ${categories[currentCategory].title}`;
+      }
+    });
+  }
+  function setupZoomPan(deps2) {
+    const { state: state2, els: els2 } = deps2;
+    let isDragging = false;
+    let startDragX = 0;
+    let startDragY = 0;
+    els2.zoomInBtn.addEventListener("click", () => {
+      state2.zoomScale = Math.min(2.5, state2.zoomScale + 0.2);
+      applyZoom(deps2);
+      if (deps2.sfx) deps2.sfx.click(true);
+    });
+    els2.zoomOutBtn.addEventListener("click", () => {
+      state2.zoomScale = Math.max(0.4, state2.zoomScale - 0.2);
+      applyZoom(deps2);
+      if (deps2.sfx) deps2.sfx.click(false);
+    });
+    els2.zoomResetBtn.addEventListener("click", () => resetZoom(deps2));
+    els2.circuitDiagram.addEventListener("wheel", (e) => {
+      e.preventDefault();
+      const delta = e.deltaY < 0 ? 0.1 : -0.1;
+      state2.zoomScale = Math.min(2.5, Math.max(0.4, state2.zoomScale + delta));
+      applyZoom(deps2);
+    }, { passive: false });
+    els2.circuitDiagram.addEventListener("mousedown", (e) => {
+      if (e.button !== 0) return;
+      isDragging = true;
+      startDragX = e.clientX - state2.panX;
+      startDragY = e.clientY - state2.panY;
+      els2.circuitDiagram.style.cursor = "grabbing";
+    });
+    window.addEventListener("mousemove", (e) => {
+      if (!isDragging) return;
+      state2.panX = e.clientX - startDragX;
+      state2.panY = e.clientY - startDragY;
+      applyZoom(deps2);
+    });
+    window.addEventListener("mouseup", () => {
+      isDragging = false;
+      els2.circuitDiagram.style.cursor = "grab";
+    });
+  }
+
+  // Web2/script.ts
+  function byId(id) {
+    return document.getElementById(id);
+  }
+  var els = {
+    circuitTitle: byId("circuitTitle"),
+    breadcrumbCategory: byId("breadcrumbCategory"),
+    inputControls: byId("inputControls"),
+    rippleControls: byId("rippleControls"),
+    rippleAnimateBtn: byId("rippleAnimateBtn"),
+    rippleStepBadge: byId("rippleStepBadge"),
+    circuitDiagram: byId("circuitDiagram"),
+    truthTable: byId("truthTable"),
+    booleanExpressions: byId("booleanExpressions"),
+    verilogCode: byId("verilogCode"),
+    copyVerilogBtn: byId("copyVerilogBtn"),
+    timingCanvas: byId("timingCanvas"),
+    zoomInBtn: byId("zoomInBtn"),
+    zoomOutBtn: byId("zoomOutBtn"),
+    zoomResetBtn: byId("zoomResetBtn"),
+    step1: byId("step1"),
+    step2: byId("step2"),
+    step3: byId("step3"),
+    step2Title: byId("step2Title"),
+    subcategoryGrid: byId("subcategoryGrid"),
+    backToStep2: byId("backToStep2")
+  };
+  var state = {
+    currentCircuit: null,
+    currentInputs: {},
+    zoomScale: 1,
+    panX: 0,
+    panY: 0,
+    waveformHistory: [],
+    waveTimeCounter: 0
+  };
+  var deps = {
+    els,
+    state,
+    sfx: window.StudioFX ?? null,
+    circuits: CIRCUITS,
+    categories: CATEGORIES
+  };
+  setupRippleAnimation(deps);
+  setupNavigation(deps);
+  setupZoomPan(deps);
+})();

@@ -1,13 +1,25 @@
 {
   "name": "digital-circuits-suite",
-  "version": "2.0.0",
+  "version": "2.1.0",
   "private": true,
   "description": "Digital Circuits Suite - Boolean Logic Solver, Circuits Simulator, and 7-Segment Display Simulator",
+  "type": "module",
   "scripts": {
-    "build:web1": "node Web3/node_modules/typescript/bin/tsc Web1/script.ts --target es2020 --module es2020 --outDir Web1/ --lib dom,es2020",
-    "build:web2": "node Web3/node_modules/typescript/bin/tsc Web2/script.ts --target es2020 --module es2020 --outDir Web2/ --lib dom,es2020",
-    "build:web3": "node Web3/node_modules/typescript/bin/tsc Web3/script.ts --target es2020 --module es2020 --outDir Web3/ --lib dom,es2020",
-    "build": "npm run build:web1 && npm run build:web2 && npm run build:web3",
-    "dev": "npx vite"
+    "dev": "vite",
+    "typecheck": "tsc --noEmit",
+    "build": "npm run typecheck && node scripts/build.mjs",
+    "build:web1": "node scripts/build.mjs web1",
+    "build:web2": "node scripts/build.mjs web2",
+    "build:web3": "node scripts/build.mjs web3",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "test:backend": "python3 -m pytest tests/backend -q",
+    "check:shared": "node scripts/check-shared-sync.mjs"
+  },
+  "devDependencies": {
+    "esbuild": "^0.23.0",
+    "typescript": "~5.5.4",
+    "vite": "^5.4.0",
+    "vitest": "^2.0.0"
   }
 }

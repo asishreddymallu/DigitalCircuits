@@ -1,1023 +1,1297 @@
 "use strict";
-/* =========================================================
-   BOOLEAN LOGIC SOLVER - STUDIO ENGINE
-   - Standard schematic gate geometry (AND, OR, NOT, NAND, NOR)
-   - Dynamic channel wire routing with zero overlaps
-   - Truth table generation & Quine-McCluskey minimization
-   - Complete verification and PNG download export
-   - Live Interactive Signal Probing Engine & Multimeter HUD
-   - Vector Zoom & Pan Controls
-   - Web Audio Studio Sound Effects
-   - Verilog, C, LaTeX & Markdown Code Generation
-========================================================= */
-/* =========================================================
-   DOM ELEMENTS
-========================================================= */
-const inputType = document.getElementById("inputType");
-const expressionSection = document.getElementById("expressionSection");
-const mintermSection = document.getElementById("mintermSection");
-const maxtermSection = document.getElementById("maxtermSection");
-const dontCareSection = document.getElementById("dontCareSection");
-const truthTableSection = document.getElementById("truthTableSection");
-const wordProblemSection = document.getElementById("wordProblemSection");
-const problemStatementInput = document.getElementById("problemStatement");
-const wordProblemStatus = document.getElementById("wordProblemStatus");
-const wordProblemLegend = document.getElementById("wordProblemLegend");
-const expressionInput = document.getElementById("expression");
-const mintermVariables = document.getElementById("mintermVariables");
-const maxtermVariables = document.getElementById("maxtermVariables");
-const dontCareVariables = document.getElementById("dontCareVariables");
-const truthVariables = document.getElementById("truthVariables");
-const mintermsInput = document.getElementById("minterms");
-const maxtermsInput = document.getElementById("maxterms");
-const dontCareMintermsInput = document.getElementById("dontCareMinterms");
-const dontCaresInput = document.getElementById("dontCares");
-const solveButton = document.getElementById("solveButton");
-const results = document.getElementById("results");
-const errorMessage = document.getElementById("errorMessage");
-const mintermExample = document.getElementById("mintermExample");
-const maxtermExample = document.getElementById("maxtermExample");
-const dontCareExample = document.getElementById("dontCareExample");
-const userTruthTable = document.getElementById("userTruthTable");
-const hudVector = document.getElementById("hudVector");
-const hudOutput = document.getElementById("hudOutput");
-const hudTermCount = document.getElementById("hudTermCount");
-let circuitCounter = 0;
-let currentVariables = [];
-let currentRows = [];
-let currentGraphBasic = null;
-let currentGraphNand = null;
-let currentGraphNor = null;
-let currentProbeState = {};
-const zoomStates = {
-    basicCircuit: { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 },
-    nandCircuit: { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 },
-    norCircuit: { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 }
-};
-function applyZoomPan(containerId) {
-    const container = document.getElementById(containerId);
-    if (!container)
-        return;
-    const svg = container.querySelector("svg");
-    if (!svg)
-        return;
-    const state = zoomStates[containerId];
-    svg.style.transform = `translate(${state.panX}px, ${state.panY}px) scale(${state.scale})`;
-}
-function resetZoomPan(containerId) {
-    zoomStates[containerId] = { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 };
-    applyZoomPan(containerId);
-}
-function initZoomPanControls() {
-    document.querySelectorAll(".zoom-in-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const target = btn.getAttribute("data-target");
-            if (target && zoomStates[target]) {
-                zoomStates[target].scale = Math.min(3.0, zoomStates[target].scale + 0.2);
-                applyZoomPan(target);
-                if (window.StudioFX)
-                    window.StudioFX.click(true);
-            }
-        });
-    });
-    document.querySelectorAll(".zoom-out-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const target = btn.getAttribute("data-target");
-            if (target && zoomStates[target]) {
-                zoomStates[target].scale = Math.max(0.4, zoomStates[target].scale - 0.2);
-                applyZoomPan(target);
-                if (window.StudioFX)
-                    window.StudioFX.click(false);
-            }
-        });
-    });
-    document.querySelectorAll(".zoom-reset-btn").forEach(btn => {
-        btn.addEventListener("click", () => {
-            const target = btn.getAttribute("data-target");
-            if (target)
-                resetZoomPan(target);
-        });
-    });
-    ["basicCircuit", "nandCircuit", "norCircuit"].forEach(id => {
-        const container = document.getElementById(id);
-        if (!container)
-            return;
-        container.addEventListener("wheel", (e) => {
-            e.preventDefault();
-            const delta = e.deltaY < 0 ? 0.1 : -0.1;
-            zoomStates[id].scale = Math.min(3.0, Math.max(0.4, zoomStates[id].scale + delta));
-            applyZoomPan(id);
-        }, { passive: false });
-        container.addEventListener("mousedown", (e) => {
-            if (e.button !== 0)
-                return;
-            zoomStates[id].isDragging = true;
-            zoomStates[id].startX = e.clientX - zoomStates[id].panX;
-            zoomStates[id].startY = e.clientY - zoomStates[id].panY;
-            container.style.cursor = "grabbing";
-        });
-        window.addEventListener("mousemove", (e) => {
-            if (!zoomStates[id] || !zoomStates[id].isDragging)
-                return;
-            zoomStates[id].panX = e.clientX - zoomStates[id].startX;
-            zoomStates[id].panY = e.clientY - zoomStates[id].startY;
-            applyZoomPan(id);
-        });
-        window.addEventListener("mouseup", () => {
-            if (zoomStates[id]) {
-                zoomStates[id].isDragging = false;
-                container.style.cursor = "grab";
-            }
-        });
-    });
-}
-/* =========================================================
-   INPUT INTERFACE & EXAMPLES
-========================================================= */
-function updateNumericExamples() {
-    const minCount = Number(mintermVariables.value);
-    const maxVal = (1 << minCount) - 1;
-    mintermExample.innerHTML = `Valid minterms: <strong>0 to ${maxVal}</strong> (e.g. 1, 3, 5)`;
-    const maxCount = Number(maxtermVariables.value);
-    const maxValMax = (1 << maxCount) - 1;
-    maxtermExample.innerHTML = `Valid maxterms: <strong>0 to ${maxValMax}</strong> (e.g. 0, 2, 4)`;
-    updateDontCareExamples();
-}
-function updateDontCareExamples() {
-    const count = Number(dontCareVariables.value);
-    const maxVal = (1 << count) - 1;
-    dontCareExample.innerHTML = `Valid terms: <strong>0 to ${maxVal}</strong> (e.g. Minterms: 1,3,7 &nbsp; Don't Cares: 0,5)`;
-}
-function clearResults() {
-    results.classList.add("hidden");
-    const dontCareResults = document.getElementById("dontCareResults");
-    if (dontCareResults)
-        dontCareResults.classList.add("hidden");
-    wordProblemStatus.textContent = "";
-    wordProblemStatus.classList.add("hidden");
-    wordProblemStatus.classList.remove("status-error");
-    wordProblemLegend.textContent = "";
-    wordProblemLegend.classList.add("hidden");
-    document.getElementById("originalExpression").textContent = "";
-    document.getElementById("generatedTruthTable").innerHTML = "";
-    document.getElementById("canonicalSOP").textContent = "";
-    document.getElementById("canonicalPOS").textContent = "";
-    document.getElementById("simplifiedExpression").textContent = "";
-    document.getElementById("karnaughMap").innerHTML = "";
-    document.getElementById("basicCircuit").innerHTML = "";
-    document.getElementById("nandCircuit").innerHTML = "";
-    document.getElementById("norCircuit").innerHTML = "";
-    document.getElementById("verification").innerHTML = "";
-}
-function updateInputInterface() {
-    const type = inputType.value;
-    expressionSection.classList.toggle("hidden", type !== "expression");
-    mintermSection.classList.toggle("hidden", type !== "minterms");
-    maxtermSection.classList.toggle("hidden", type !== "maxterms");
-    dontCareSection.classList.toggle("hidden", type !== "dontCare");
-    truthTableSection.classList.toggle("hidden", type !== "truthTable");
-    wordProblemSection.classList.toggle("hidden", type !== "wordProblem");
-    clearResults();
-}
-inputType.addEventListener("change", () => {
-    updateInputInterface();
-    if (window.StudioFX)
-        window.StudioFX.click(true);
-});
-mintermVariables.addEventListener("change", updateNumericExamples);
-maxtermVariables.addEventListener("change", updateNumericExamples);
-dontCareVariables.addEventListener("change", updateDontCareExamples);
-truthVariables.addEventListener("change", generateTruthTableInput);
-/* =========================================================
-   LEXER & PARSER
-========================================================= */
-function getVariables(expression) {
-    const letters = expression.match(/[A-Za-z]/g) || [];
-    return [...new Set(letters.map(letter => letter.toUpperCase()))].sort();
-}
-function generateVariableNames(count) {
-    const names = [];
-    for (let i = 0; i < count; i++) {
-        names.push(String.fromCharCode(65 + i));
+(() => {
+  // Web1/src/ui/dom.ts
+  function byId(id) {
+    const el2 = document.getElementById(id);
+    if (!el2) throw new Error(`Missing #${id} \u2014 index.html is out of sync with script.js`);
+    return el2;
+  }
+  function maybeById(id) {
+    return document.getElementById(id);
+  }
+  function el(tag, className, text) {
+    const node = document.createElement(tag);
+    if (className) node.className = className;
+    if (text !== void 0) node.textContent = text;
+    return node;
+  }
+  function escapeHtml(str) {
+    return str.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#39;");
+  }
+
+  // shared/ts/boolean/ast.ts
+  function evalAst(node, assignment) {
+    switch (node.kind) {
+      case "var":
+        return assignment[node.name] ?? false;
+      case "const":
+        return node.value;
+      case "not":
+        return !evalAst(node.child, assignment);
+      case "and":
+        return evalAst(node.left, assignment) && evalAst(node.right, assignment);
+      case "or":
+        return evalAst(node.left, assignment) || evalAst(node.right, assignment);
+      case "xor":
+        return evalAst(node.left, assignment) !== evalAst(node.right, assignment);
     }
-    return names;
-}
-function tokenize(expression) {
-    const tokens = [];
-    let i = 0;
-    while (i < expression.length) {
-        const char = expression[i];
-        if (/\s/.test(char)) {
-            i++;
-            continue;
-        }
-        if (/[A-Za-z]/.test(char)) {
-            tokens.push({ type: "VARIABLE", value: char.toUpperCase() });
-            i++;
-            continue;
-        }
-        if (char === "'") {
-            tokens.push({ type: "POSTFIX_NOT" });
-            i++;
-            continue;
-        }
-        if (char === "+" || char === "|") {
-            tokens.push({ type: "OR" });
-            i++;
-            continue;
-        }
-        if (char === "^") {
-            tokens.push({ type: "XOR" });
-            i++;
-            continue;
-        }
-        if (char === "*" || char === "&" || char === "·") {
-            tokens.push({ type: "AND" });
-            i++;
-            continue;
-        }
-        if (char === "~" || char === "!" || char === "¬") {
-            tokens.push({ type: "NOT" });
-            i++;
-            continue;
-        }
-        if (char === "(") {
-            tokens.push({ type: "LPAREN" });
-            i++;
-            continue;
-        }
-        if (char === ")") {
-            tokens.push({ type: "RPAREN" });
-            i++;
-            continue;
-        }
-        throw new Error(`Unsupported character: '${char}'`);
-    }
-    return tokens;
-}
-function insertImplicitAND(tokens) {
-    const result = [];
-    for (let i = 0; i < tokens.length; i++) {
-        const current = tokens[i];
-        result.push(current);
-        if (i + 1 < tokens.length) {
-            const next = tokens[i + 1];
-            const leftCanEnd = current.type === "VARIABLE" ||
-                current.type === "POSTFIX_NOT" ||
-                current.type === "RPAREN";
-            const rightCanStart = next.type === "VARIABLE" ||
-                next.type === "NOT" ||
-                next.type === "LPAREN";
-            if (leftCanEnd && rightCanStart) {
-                result.push({ type: "AND" });
-            }
-        }
-    }
-    return result;
-}
-class Parser {
-    constructor(tokens) {
-        this.index = 0;
-        this.tokens = tokens;
-    }
-    peek() { return this.tokens[this.index]; }
-    get() { return this.tokens[this.index++]; }
-    parse() {
-        const node = this.parseOR();
-        if (this.index < this.tokens.length) {
-            throw new Error("Unexpected token at end of expression.");
-        }
-        return node;
-    }
-    parseOR() {
-        var _a;
-        let node = this.parseXOR();
-        while (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "OR") {
-            this.get();
-            node = { type: "OR", left: node, right: this.parseXOR() };
-        }
-        return node;
-    }
-    parseXOR() {
-        var _a;
-        let node = this.parseAND();
-        while (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "XOR") {
-            this.get();
-            node = { type: "XOR", left: node, right: this.parseAND() };
-        }
-        return node;
-    }
-    parseAND() {
-        var _a;
-        let node = this.parseUnary();
-        while (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "AND") {
-            this.get();
-            node = { type: "AND", left: node, right: this.parseUnary() };
-        }
-        return node;
-    }
-    parseUnary() {
-        var _a, _b;
-        if (((_a = this.peek()) === null || _a === void 0 ? void 0 : _a.type) === "NOT") {
-            this.get();
-            return { type: "NOT", child: this.parseUnary() };
-        }
-        let node = this.parsePrimary();
-        while (((_b = this.peek()) === null || _b === void 0 ? void 0 : _b.type) === "POSTFIX_NOT") {
-            this.get();
-            node = { type: "NOT", child: node };
-        }
-        return node;
-    }
-    parsePrimary() {
-        const token = this.get();
-        if (!token)
-            throw new Error("Unexpected end of expression.");
-        if (token.type === "VARIABLE")
-            return { type: "VARIABLE", name: token.value };
-        if (token.type === "LPAREN") {
-            const node = this.parseOR();
-            const close = this.get();
-            if (!close || close.type !== "RPAREN")
-                throw new Error("Missing closing parenthesis ')'.");
-            return node;
-        }
-        throw new Error("Invalid expression syntax.");
-    }
-}
-function evaluateAST(node, assignment) {
-    var _a;
-    switch (node.type) {
-        case "VARIABLE": return (_a = assignment[node.name]) !== null && _a !== void 0 ? _a : false;
-        case "NOT": return !evaluateAST(node.child, assignment);
-        case "AND": return evaluateAST(node.left, assignment) && evaluateAST(node.right, assignment);
-        case "OR": return evaluateAST(node.left, assignment) || evaluateAST(node.right, assignment);
-        case "XOR": return evaluateAST(node.left, assignment) !== evaluateAST(node.right, assignment);
-        case "CONST": return node.value;
-    }
-}
-function generateCombinations(variableCount) {
+  }
+  function generateCombinations(variableCount) {
     const total = 1 << variableCount;
     const combinations = [];
     for (let i = 0; i < total; i++) {
-        const row = [];
-        for (let bit = variableCount - 1; bit >= 0; bit--) {
-            row.push((i >> bit) & 1);
-        }
-        combinations.push(row);
+      const row = [];
+      for (let bit = variableCount - 1; bit >= 0; bit--) {
+        row.push(i >> bit & 1);
+      }
+      combinations.push(row);
     }
     return combinations;
-}
-function evaluateExpression(expression, variables) {
-    const tokens = insertImplicitAND(tokenize(expression));
-    const parser = new Parser(tokens);
-    const ast = parser.parse();
-    const combinations = generateCombinations(variables.length);
-    const rows = combinations.map(inputs => {
-        const assignment = {};
-        variables.forEach((variable, index) => {
-            assignment[variable] = Boolean(inputs[index]);
-        });
-        return { inputs, output: evaluateAST(ast, assignment) ? 1 : 0 };
+  }
+  function astTruthTable(ast, variables) {
+    return generateCombinations(variables.length).map((inputs) => {
+      const assignment = {};
+      variables.forEach((v, i) => {
+        assignment[v] = inputs[i] === 1;
+      });
+      return { inputs, output: evalAst(ast, assignment) ? 1 : 0 };
     });
-    return { ast, rows };
-}
-/* =========================================================
-   CANONICAL FORMS & MINIMIZATION (Quine-McCluskey)
-========================================================= */
-function mintermsToExpression(minterms, variableCount, dontCares) {
-    const maxVal = (1 << variableCount) - 1;
-    minterms.forEach(m => {
-        if (isNaN(m) || m < 0 || m > maxVal) {
-            throw new Error(`Minterm ${m} is out of range (0 to ${maxVal}).`);
-        }
-    });
-    const variables = generateVariableNames(variableCount);
-    if (minterms.length === 0)
-        return "0";
-    if (minterms.length === 1 << variableCount)
-        return "1";
-    return minterms.map(m => {
-        let term = "";
-        for (let i = 0; i < variableCount; i++) {
-            const bit = (m >> (variableCount - 1 - i)) & 1;
-            term += bit ? variables[i] : `${variables[i]}'`;
-        }
-        return term;
-    }).join(" + ");
-}
-function maxtermsToExpression(maxterms, variableCount, dontCares) {
-    const maxVal = (1 << variableCount) - 1;
-    maxterms.forEach(m => {
-        if (isNaN(m) || m < 0 || m > maxVal) {
-            throw new Error(`Maxterm ${m} is out of range (0 to ${maxVal}).`);
-        }
-    });
-    const variables = generateVariableNames(variableCount);
-    if (maxterms.length === 0)
-        return "1";
-    if (maxterms.length === 1 << variableCount)
-        return "0";
-    return maxterms.map(m => {
-        const parts = [];
-        for (let i = 0; i < variableCount; i++) {
-            const bit = (m >> (variableCount - 1 - i)) & 1;
-            parts.push(bit ? `${variables[i]}'` : variables[i]);
-        }
-        return `(${parts.join(" + ")})`;
-    }).join("");
-}
-function generateCanonicalSOP(rows, variables, dontCares) {
-    const terms = rows
-        .map((row, index) => ({ row, index }))
-        .filter(({ row, index }) => row.output === 1 && (!dontCares || !dontCares.has(index)))
-        .map(({ row }) => {
-        return row.inputs.map((val, idx) => val ? variables[idx] : `${variables[idx]}'`).join("");
-    });
-    return terms.length > 0 ? terms.join(" + ") : "0";
-}
-function generateCanonicalPOS(rows, variables, dontCares) {
-    const clauses = rows
-        .map((row, index) => ({ row, index }))
-        .filter(({ row, index }) => row.output === 0 && (!dontCares || !dontCares.has(index)))
-        .map(({ row }) => {
-        const sum = row.inputs.map((val, idx) => val ? `${variables[idx]}'` : variables[idx]).join(" + ");
-        return `(${sum})`;
-    });
-    return clauses.length > 0 ? clauses.join("") : "1";
-}
-function canCombine(a, b) {
-    let diff = 0;
-    for (let i = 0; i < a.length; i++) {
-        if (a[i] !== b[i]) {
-            diff++;
-            if (diff > 1)
-                return false;
-        }
+  }
+
+  // shared/ts/boolean/tokenizer.ts
+  var BooleanParseError = class extends Error {
+    constructor(message, position = 0) {
+      super(message);
+      this.name = "BooleanParseError";
+      this.position = position;
     }
-    return diff === 1;
-}
-function combinePatterns(a, b) {
-    let result = "";
-    for (let i = 0; i < a.length; i++) {
-        result += a[i] === b[i] ? a[i] : "-";
+  };
+  var IDENT_START = /[A-Za-z_]/;
+  var IDENT_PART = /[A-Za-z0-9_]/;
+  function isIdentPart(ch) {
+    return IDENT_PART.test(ch);
+  }
+  function tokenize(expression) {
+    if (expression.length > 2e3) {
+      throw new BooleanParseError(
+        `Expression is too long (${expression.length} characters). Maximum supported length is 2000 characters.`,
+        2e3
+      );
+    }
+    const tokens = [];
+    let i = 0;
+    while (i < expression.length) {
+      const ch = expression[i];
+      if (/\s/.test(ch)) {
+        i++;
+        continue;
+      }
+      if (IDENT_START.test(ch)) {
+        let j = i + 1;
+        while (j < expression.length && IDENT_PART.test(expression[j])) j++;
+        const raw = expression.slice(i, j);
+        tokens.push({ type: "IDENT", value: raw.toUpperCase(), raw, pos: i });
+        i = j;
+        continue;
+      }
+      if (ch === "0" || ch === "1") {
+        tokens.push({ type: "CONST", value: ch, raw: ch, pos: i });
+        i++;
+        continue;
+      }
+      switch (ch) {
+        case "'":
+        case "\u2019":
+          tokens.push({ type: "NOT_POSTFIX", raw: "'", pos: i });
+          i++;
+          continue;
+        case "!":
+        case "~":
+        case "\xAC":
+          tokens.push({ type: "NOT_PREFIX", raw: ch, pos: i });
+          i++;
+          continue;
+        case "*":
+        case "&":
+        case "\xB7":
+        case "\u2227":
+        case ".":
+          tokens.push({ type: "AND", raw: ch, pos: i });
+          i++;
+          continue;
+        case "+":
+        case "|":
+        case "\u2228":
+          tokens.push({ type: "OR", raw: ch, pos: i });
+          i++;
+          continue;
+        case "^":
+        case "\u2295":
+          tokens.push({ type: "XOR", raw: ch, pos: i });
+          i++;
+          continue;
+        case "(":
+        case "[":
+          tokens.push({ type: "LPAREN", raw: "(", pos: i });
+          i++;
+          continue;
+        case ")":
+        case "]":
+          tokens.push({ type: "RPAREN", raw: ")", pos: i });
+          i++;
+          continue;
+      }
+      throw new BooleanParseError(
+        `Invalid character '${ch}' at position ${i + 1}. Supported: variables (A\u2013Z or names like ENABLE), constants 0 and 1, NOT (' ! ~), AND (* & \xB7), OR (+ |), XOR (^), parentheses.`,
+        i
+      );
+    }
+    return tokens;
+  }
+  function insertImplicitAND(tokens) {
+    const result = [];
+    for (let i = 0; i < tokens.length; i++) {
+      const current = tokens[i];
+      result.push(current);
+      if (i + 1 < tokens.length) {
+        const next = tokens[i + 1];
+        const leftCanEnd = current.type === "IDENT" || current.type === "CONST" || current.type === "NOT_POSTFIX" || current.type === "RPAREN";
+        const rightCanStart = next.type === "IDENT" || next.type === "CONST" || next.type === "LPAREN" || next.type === "NOT_PREFIX";
+        if (leftCanEnd && rightCanStart) {
+          result.push({ type: "AND", raw: "", pos: next.pos });
+        }
+      }
     }
     return result;
-}
-function patternCovers(pattern, minterm, variableCount) {
+  }
+
+  // shared/ts/boolean/parser.ts
+  var TokenStream = class {
+    constructor(tokens) {
+      this.tokens = tokens;
+      this.index = 0;
+    }
+    peek() {
+      return this.tokens[this.index];
+    }
+    next() {
+      return this.tokens[this.index++];
+    }
+    describe(token) {
+      if (!token) return "end of expression";
+      return `'${token.raw ?? token.value ?? token.type}'`;
+    }
+  };
+  function parseExpression(source, knownVariables) {
+    const trimmed = source.trim();
+    if (!trimmed) {
+      throw new BooleanParseError("The expression is empty. Enter a Boolean expression such as A'B + BC.");
+    }
+    const stream = new TokenStream(insertImplicitAND(tokenize(trimmed)));
+    const node = parseOR(stream);
+    const trailing = stream.peek();
+    if (trailing) {
+      throw new BooleanParseError(
+        `Unexpected ${stream.describe(trailing)} at position ${trailing.pos + 1} after the end of the expression. Missing an operator (AND *, OR +, XOR ^)?`,
+        trailing.pos
+      );
+    }
+    const variables = [...collectAstVars(node)].sort();
+    if (knownVariables && knownVariables.length > 0) {
+      const known = new Set(knownVariables);
+      for (const v of variables) {
+        if (!known.has(v)) {
+          const looksMerged = v.length > 1 && [...v].every((c) => known.has(c));
+          const hint = looksMerged ? ` If you meant ${[...v].map((c) => `${c}' or variables joined with \xB7`).join(", ").replace("' or variables joined with \xB7", "")}, write them with an explicit AND, e.g. "${[...v].join("\xB7")}".` : "";
+          throw new BooleanParseError(
+            `Unknown variable '${v}'. This function uses: ${knownVariables.join(", ")}.${hint}`
+          );
+        }
+      }
+    }
+    return { ast: node, variables };
+  }
+  function collectAstVars(node, out = /* @__PURE__ */ new Set()) {
+    switch (node.kind) {
+      case "var":
+        out.add(node.name);
+        break;
+      case "const":
+        break;
+      case "not":
+        collectAstVars(node.child, out);
+        break;
+      default:
+        collectAstVars(node.left, out);
+        collectAstVars(node.right, out);
+    }
+    return out;
+  }
+  function parseOR(stream) {
+    let node = parseXOR(stream);
+    while (stream.peek()?.type === "OR") {
+      stream.next();
+      node = { kind: "or", left: node, right: parseXOR(stream) };
+    }
+    return node;
+  }
+  function parseXOR(stream) {
+    let node = parseAND(stream);
+    while (stream.peek()?.type === "XOR") {
+      const opToken = stream.next();
+      const right = parseAND(stream);
+      if (right.kind === "xor" || right.kind === "and" || right.kind === "or") {
+      }
+      node = { kind: "xor", left: node, right };
+    }
+    return node;
+  }
+  function parseAND(stream) {
+    let node = parseUnary(stream);
+    while (stream.peek()?.type === "AND") {
+      stream.next();
+      node = { kind: "and", left: node, right: parseUnary(stream) };
+    }
+    return node;
+  }
+  function parseUnary(stream) {
+    const tok = stream.peek();
+    if (tok?.type === "NOT_PREFIX") {
+      stream.next();
+      const child = parseUnary(stream);
+      if (child.kind === "var" || child.kind === "const") {
+      }
+      return { kind: "not", child };
+    }
+    let node = parsePrimary(stream);
+    while (stream.peek()?.type === "NOT_POSTFIX") {
+      stream.next();
+      node = { kind: "not", child: node };
+    }
+    return node;
+  }
+  function parsePrimary(stream) {
+    const token = stream.next();
+    if (!token) {
+      throw new BooleanParseError(
+        "Unexpected end of expression. Expected a variable, a constant (0 or 1), or '('."
+      );
+    }
+    if (token.type === "IDENT") {
+      return { kind: "var", name: token.value };
+    }
+    if (token.type === "CONST") {
+      return { kind: "const", value: token.value === "1" };
+    }
+    if (token.type === "LPAREN") {
+      const inner = parseOR(stream);
+      const close = stream.next();
+      if (!close || close.type !== "RPAREN") {
+        throw new BooleanParseError(
+          `Missing closing ')' for the parenthesis opened at position ${token.pos + 1}.`,
+          token.pos
+        );
+      }
+      return inner;
+    }
+    if (token.type === "NOT_POSTFIX") {
+      throw new BooleanParseError(
+        `Stray ''' at position ${token.pos + 1}: nothing before it to complement.`,
+        token.pos
+      );
+    }
+    throw new BooleanParseError(
+      `Unexpected ${stream.describe(token)} at position ${token.pos + 1}. Expected a variable, a constant (0 or 1), or '('.`,
+      token.pos
+    );
+  }
+
+  // shared/ts/boolean/limits.ts
+  var LIMITS = {
+    /** Maximum number of distinct variables in one function. */
+    MAX_VARIABLES: 8,
+    /** Maximum characters accepted for a typed Boolean expression. */
+    MAX_EXPRESSION_LENGTH: 2e3,
+    /** Maximum characters accepted for a natural-language problem statement. */
+    MAX_PROBLEM_LENGTH: 4e3,
+    /** Maximum don't-care conditions accepted from the AI per request. */
+    MAX_DONT_CARE_CONDITIONS: 8,
+    /**
+     * Node budget for the exact-cover branch search in Quine-McCluskey.
+     * When exceeded, the solver finishes the cover greedily. The result stays
+     * logically equivalent (verified afterwards); only guaranteed minimality
+     * is relaxed. Typical 6-variable problems use far fewer nodes.
+     */
+    MINIMIZE_NODE_BUDGET: 2e5
+  };
+  var LimitError = class extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "LimitError";
+    }
+  };
+
+  // shared/ts/boolean/minimizer.ts
+  function canCombine(a, b) {
+    let diff = 0;
+    for (let i = 0; i < a.length; i++) {
+      if (a[i] !== b[i]) {
+        diff++;
+        if (diff > 1) return false;
+      }
+    }
+    return diff === 1;
+  }
+  function combinePatterns(a, b) {
+    let result = "";
+    for (let i = 0; i < a.length; i++) {
+      result += a[i] === b[i] ? a[i] : "-";
+    }
+    return result;
+  }
+  function patternCovers(pattern, minterm, variableCount) {
     const bin = minterm.toString(2).padStart(variableCount, "0");
     for (let i = 0; i < pattern.length; i++) {
-        if (pattern[i] !== "-" && pattern[i] !== bin[i])
-            return false;
+      if (pattern[i] !== "-" && pattern[i] !== bin[i]) return false;
     }
     return true;
-}
-function getPrimeImplicants(minterms, variableCount) {
-    let groups = new Map();
-    minterms.forEach(m => {
-        const bin = m.toString(2).padStart(variableCount, "0");
-        const ones = (bin.match(/1/g) || []).length;
-        if (!groups.has(ones))
-            groups.set(ones, new Set());
-        groups.get(ones).add(bin);
+  }
+  function getPrimeImplicants(minterms, variableCount) {
+    let groups = /* @__PURE__ */ new Map();
+    minterms.forEach((m) => {
+      const bin = m.toString(2).padStart(variableCount, "0");
+      const ones = (bin.match(/1/g) || []).length;
+      if (!groups.has(ones)) groups.set(ones, /* @__PURE__ */ new Set());
+      groups.get(ones).add(bin);
     });
-    const primes = new Set();
+    const primes = /* @__PURE__ */ new Set();
     while (groups.size > 0) {
-        const nextGroups = new Map();
-        const combined = new Set();
-        const onesKeys = [...groups.keys()].sort((a, b) => a - b);
-        for (let i = 0; i < onesKeys.length - 1; i++) {
-            const k1 = onesKeys[i];
-            const k2 = onesKeys[i + 1];
-            if (k2 !== k1 + 1)
-                continue;
-            const g1 = groups.get(k1);
-            const g2 = groups.get(k2);
-            g1.forEach(p1 => {
-                g2.forEach(p2 => {
-                    if (canCombine(p1, p2)) {
-                        const merged = combinePatterns(p1, p2);
-                        combined.add(p1);
-                        combined.add(p2);
-                        const ones = (merged.replace(/-/g, "").match(/1/g) || []).length;
-                        if (!nextGroups.has(ones))
-                            nextGroups.set(ones, new Set());
-                        nextGroups.get(ones).add(merged);
-                    }
-                });
-            });
-        }
-        groups.forEach(set => {
-            set.forEach(pattern => {
-                if (!combined.has(pattern))
-                    primes.add(pattern);
-            });
+      const nextGroups = /* @__PURE__ */ new Map();
+      const combined = /* @__PURE__ */ new Set();
+      const onesKeys = [...groups.keys()].sort((a, b) => a - b);
+      for (let i = 0; i < onesKeys.length - 1; i++) {
+        const k1 = onesKeys[i];
+        const k2 = onesKeys[i + 1];
+        if (k2 !== k1 + 1) continue;
+        const g1 = groups.get(k1);
+        const g2 = groups.get(k2);
+        g1.forEach((p1) => {
+          g2.forEach((p2) => {
+            if (canCombine(p1, p2)) {
+              combined.add(p1);
+              combined.add(p2);
+              const merged = combinePatterns(p1, p2);
+              const ones = (merged.replace(/-/g, "").match(/1/g) || []).length;
+              if (!nextGroups.has(ones)) nextGroups.set(ones, /* @__PURE__ */ new Set());
+              nextGroups.get(ones).add(merged);
+            }
+          });
         });
-        groups = nextGroups;
+      }
+      groups.forEach((set) => {
+        set.forEach((pattern) => {
+          if (!combined.has(pattern)) primes.add(pattern);
+        });
+      });
+      groups = nextGroups;
     }
-    return [...primes].map(pattern => ({ pattern }));
-}
-function findMinimumCover(minterms, primes, variableCount) {
-    if (minterms.length === 0 || primes.length === 0)
-        return [];
-    const chart = primes.map(p => minterms.map(m => patternCovers(p.pattern, m, variableCount)));
-    const essentialPrimes = new Set();
+    return [...primes].map((pattern) => ({ pattern }));
+  }
+  function findMinimumCover(minterms, primes, variableCount, nodeBudget = LIMITS.MINIMIZE_NODE_BUDGET) {
+    if (minterms.length === 0 || primes.length === 0) return { cover: [], truncated: false };
+    const chart = primes.map(
+      (p) => minterms.map((m) => patternCovers(p.pattern, m, variableCount))
+    );
+    const essentialPrimes = /* @__PURE__ */ new Set();
     const uncoveredMinterms = new Set(minterms.map((_, i) => i));
     for (let c = 0; c < minterms.length; c++) {
-        const coveringPrimes = [];
-        for (let r = 0; r < primes.length; r++) {
-            if (chart[r][c])
-                coveringPrimes.push(r);
+      const coveringPrimes = [];
+      for (let r = 0; r < primes.length; r++) {
+        if (chart[r][c]) coveringPrimes.push(r);
+      }
+      if (coveringPrimes.length === 1) {
+        const r = coveringPrimes[0];
+        essentialPrimes.add(r);
+        for (let col = 0; col < minterms.length; col++) {
+          if (chart[r][col]) uncoveredMinterms.delete(col);
         }
-        if (coveringPrimes.length === 1) {
-            const r = coveringPrimes[0];
-            essentialPrimes.add(r);
-            for (let col = 0; col < minterms.length; col++) {
-                if (chart[r][col])
-                    uncoveredMinterms.delete(col);
-            }
-        }
+      }
     }
     if (uncoveredMinterms.size === 0) {
-        return [...essentialPrimes].map(i => primes[i]);
+      return { cover: [...essentialPrimes].map((i) => primes[i]), truncated: false };
     }
-    const remainingPrimes = primes
-        .map((_, i) => i)
-        .filter(i => !essentialPrimes.has(i));
+    const remainingPrimes = primes.map((_, i) => i).filter((i) => !essentialPrimes.has(i));
     const remainingMinterms = [...uncoveredMinterms];
     let bestCombination = null;
+    let nodesUsed = 0;
+    let truncated = false;
     function search(uncovered, chosen) {
-        if (uncovered.length === 0) {
-            if (bestCombination === null || chosen.length < bestCombination.length) {
-                bestCombination = [...chosen];
-            }
-            return;
+      if (uncovered.length === 0) {
+        if (bestCombination === null || chosen.length < bestCombination.length) {
+          bestCombination = [...chosen];
         }
-        if (bestCombination !== null && chosen.length >= bestCombination.length)
-            return;
-        const targetMinterm = uncovered[0];
-        const covering = remainingPrimes.filter(p => chart[p][targetMinterm] && !chosen.includes(p));
-        for (const p of covering) {
-            const newUncovered = uncovered.filter(m => !chart[p][m]);
-            search(newUncovered, [...chosen, p]);
-        }
+        return;
+      }
+      if (bestCombination !== null && chosen.length >= bestCombination.length) return;
+      if (++nodesUsed > nodeBudget) {
+        truncated = true;
+        return;
+      }
+      const targetMinterm = uncovered[0];
+      const covering = remainingPrimes.filter((p) => chart[p][targetMinterm] && !chosen.includes(p));
+      for (const p of covering) {
+        const newUncovered = uncovered.filter((m) => !chart[p][m]);
+        search(newUncovered, [...chosen, p]);
+      }
     }
     search(remainingMinterms, []);
-    const allChosen = new Set([...essentialPrimes, ...(bestCombination || [])]);
-    return [...allChosen].map(i => primes[i]);
-}
-function patternToSOPTerm(pattern, variables) {
-    let term = "";
-    for (let i = 0; i < pattern.length; i++) {
-        if (pattern[i] === "1")
-            term += variables[i];
-        else if (pattern[i] === "0")
-            term += `${variables[i]}'`;
+    let chosenIndices = /* @__PURE__ */ new Set([...essentialPrimes, ...bestCombination ?? []]);
+    let stillUncovered = truncated ? remainingMinterms.filter((mIdx) => ![...chosenIndices].some((r) => chart[r][mIdx])) : [];
+    if (truncated && stillUncovered.length > 0) {
+      while (stillUncovered.length > 0) {
+        let bestPrime = -1;
+        let bestGain = -1;
+        for (const r of remainingPrimes) {
+          if (chosenIndices.has(r)) continue;
+          const gain = stillUncovered.filter((mIdx) => chart[r][mIdx]).length;
+          if (gain > bestGain) {
+            bestGain = gain;
+            bestPrime = r;
+          }
+        }
+        if (bestPrime === -1 || bestGain <= 0) break;
+        chosenIndices.add(bestPrime);
+        stillUncovered = stillUncovered.filter((mIdx) => !chart[bestPrime][mIdx]);
+      }
     }
-    return term || "1";
-}
-function sopFromImplicants(implicants, variables) {
-    if (implicants.length === 0)
-        return "0";
-    return implicants.map(imp => patternToSOPTerm(imp.pattern, variables)).join(" + ");
-}
-function patternToPOSClause(pattern, variables) {
+    return { cover: [...chosenIndices].map((i) => primes[i]), truncated };
+  }
+  function assertMinimizable(varCount, termCount) {
+    if (varCount > LIMITS.MAX_VARIABLES) {
+      throw new LimitError(
+        `${varCount} variables exceeds the supported maximum of ${LIMITS.MAX_VARIABLES}. Reduce the number of variables in this function.`
+      );
+    }
+    if (termCount > 1 << varCount) {
+      throw new LimitError(`Term list contains more entries than the ${varCount}-variable space allows.`);
+    }
+  }
+  function minimizeSOP(minterms, variables, dontCares, options) {
+    assertMinimizable(variables.length, minterms.length + (dontCares?.size ?? 0));
+    const varCount = variables.length;
+    if (minterms.length === 0) {
+      return { implicants: [], isConstant: true, constantValue: false, coverTruncated: false };
+    }
+    if (minterms.length + (dontCares?.size ?? 0) === 1 << varCount) {
+      return {
+        implicants: [{ pattern: "-".repeat(varCount) }],
+        isConstant: true,
+        constantValue: true,
+        coverTruncated: false
+      };
+    }
+    const allTerms = dontCares ? [.../* @__PURE__ */ new Set([...minterms, ...dontCares])] : minterms;
+    const primes = getPrimeImplicants(allTerms, varCount);
+    if (primes.length > 5e3) {
+      throw new LimitError(
+        `This function produced ${primes.length} prime implicants, which is too complex to minimize interactively.`
+      );
+    }
+    const { cover, truncated } = findMinimumCover(minterms, primes, varCount, options?.nodeBudget ?? LIMITS.MINIMIZE_NODE_BUDGET);
+    return { implicants: cover, isConstant: false, coverTruncated: truncated };
+  }
+  function minimizePOS(zeros, variables, dontCares, options) {
+    assertMinimizable(variables.length, zeros.length + (dontCares?.size ?? 0));
+    const varCount = variables.length;
+    if (zeros.length === 0) {
+      return { implicants: [], isConstant: true, constantValue: true, coverTruncated: false };
+    }
+    if (zeros.length + (dontCares?.size ?? 0) === 1 << varCount) {
+      return {
+        implicants: [{ pattern: "-".repeat(varCount) }],
+        isConstant: true,
+        constantValue: false,
+        coverTruncated: false
+      };
+    }
+    const allTerms = dontCares ? [.../* @__PURE__ */ new Set([...zeros, ...dontCares])] : zeros;
+    const primes = getPrimeImplicants(allTerms, varCount);
+    if (primes.length > 5e3) {
+      throw new LimitError(
+        `This function produced ${primes.length} prime implicants, which is too complex to minimize interactively.`
+      );
+    }
+    const { cover, truncated } = findMinimumCover(zeros, primes, varCount, options?.nodeBudget ?? LIMITS.MINIMIZE_NODE_BUDGET);
+    return { implicants: cover, isConstant: false, coverTruncated: truncated };
+  }
+  function patternToTermAst(pattern, variables) {
+    const literals = [];
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i] === "1") literals.push({ kind: "var", name: variables[i] });
+      else if (pattern[i] === "0") literals.push({ kind: "not", child: { kind: "var", name: variables[i] } });
+    }
+    if (literals.length === 0) return { kind: "const", value: true };
+    return literals.reduce((acc, lit) => ({ kind: "and", left: acc, right: lit }));
+  }
+  function sopAstFromImplicants(implicants, variables) {
+    if (implicants.length === 0) return { kind: "const", value: false };
+    return implicants.map((imp) => patternToTermAst(imp.pattern, variables)).reduce((acc, term) => ({ kind: "or", left: acc, right: term }));
+  }
+
+  // shared/ts/boolean/formatter.ts
+  function joinAndLiterals(literals, andSymbol) {
+    let result = "";
+    for (let i = 0; i < literals.length; i++) {
+      if (i > 0) {
+        const prevEnd = result[result.length - 1];
+        const nextStart = literals[i][0];
+        const needsSeparator = andSymbol !== "" || prevEnd !== void 0 && nextStart !== void 0 && isBoundaryAmbiguous(prevEnd, nextStart);
+        result += needsSeparator ? andSymbol || "\xB7" : "";
+      }
+      result += literals[i];
+    }
+    return result;
+  }
+  function isBoundaryAmbiguous(prevChar, nextChar) {
+    if (prevChar === "'") return false;
+    if (!isIdentPart(prevChar)) return false;
+    return isIdentPart(nextChar);
+  }
+  function termToString(pattern, variables, andSymbol = "") {
+    const literals = [];
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i] === "1") literals.push(variables[i]);
+      else if (pattern[i] === "0") literals.push(`${variables[i]}'`);
+    }
+    if (literals.length === 0) return "1";
+    return joinAndLiterals(literals, andSymbol);
+  }
+  function clauseToString(pattern, variables, orSymbol = " + ") {
     const parts = [];
     for (let i = 0; i < pattern.length; i++) {
-        if (pattern[i] === "0")
-            parts.push(variables[i]);
-        else if (pattern[i] === "1")
-            parts.push(`${variables[i]}'`);
+      if (pattern[i] === "0") parts.push(variables[i]);
+      else if (pattern[i] === "1") parts.push(`${variables[i]}'`);
     }
-    if (parts.length === 0)
-        return "0";
-    return parts.length === 1 ? parts[0] : `(${parts.join(" + ")})`;
-}
-function posFromImplicants(implicants, variables) {
-    if (implicants.length === 0)
-        return "1";
-    return implicants.map(imp => patternToPOSClause(imp.pattern, variables)).join("");
-}
-function minimizeSOP(minterms, variables, dontCares) {
-    if (minterms.length === 0)
-        return { expression: "0", implicants: [] };
-    const allTerms = dontCares ? [...minterms, ...dontCares] : minterms;
-    if (minterms.length + ((dontCares === null || dontCares === void 0 ? void 0 : dontCares.size) || 0) === (1 << variables.length)) {
-        return { expression: "1", implicants: [{ pattern: "-".repeat(variables.length) }] };
-    }
-    const primes = getPrimeImplicants(allTerms, variables.length);
-    const cover = findMinimumCover(minterms, primes, variables.length);
-    return { expression: sopFromImplicants(cover, variables), implicants: cover };
-}
-function minimizePOS(zeros, variables, dontCares) {
-    if (zeros.length === 0)
-        return { expression: "1", implicants: [] };
-    const allTerms = dontCares ? [...zeros, ...dontCares] : zeros;
-    if (zeros.length + ((dontCares === null || dontCares === void 0 ? void 0 : dontCares.size) || 0) === (1 << variables.length)) {
-        return { expression: "0", implicants: [{ pattern: "-".repeat(variables.length) }] };
-    }
-    const primes = getPrimeImplicants(allTerms, variables.length);
-    const cover = findMinimumCover(zeros, primes, variables.length);
-    return { expression: posFromImplicants(cover, variables), implicants: cover };
-}
-/* =========================================================
-   CIRCUIT GRAPH GENERATION
-========================================================= */
-function createGraph() {
+    if (parts.length === 0) return "0";
+    return parts.length === 1 ? parts[0] : `(${parts.join(orSymbol)})`;
+  }
+
+  // Web1/src/circuits/circuitGraph.ts
+  var circuitCounter = 0;
+  function resetCircuitIds() {
+    circuitCounter = 0;
+  }
+  function createGraph() {
     return { nodes: [], output: "", inputs: [] };
-}
-function addNode(graph, type, inputs = [], label = "") {
+  }
+  function addNode(graph, type, inputs = [], label = "") {
     const id = `node_${circuitCounter++}`;
     graph.nodes.push({ id, type, inputs, label });
     return id;
-}
-function addInput(graph, variable) {
-    const existing = graph.nodes.find(n => n.type === "INPUT" && n.label === variable);
-    if (existing)
-        return existing.id;
+  }
+  function addInput(graph, variable) {
+    const existing = graph.nodes.find((n) => n.type === "INPUT" && n.label === variable);
+    if (existing) return existing.id;
     const id = addNode(graph, "INPUT", [], variable);
     graph.inputs.push(id);
     return id;
-}
-function buildBasicSOPCircuit(implicants, variables) {
+  }
+  var isAllDash = (imp, n) => imp.pattern === "-".repeat(n);
+  function buildBasicSOPCircuit(implicants, variables) {
     const graph = createGraph();
-    variables.forEach(v => addInput(graph, v));
+    variables.forEach((v) => addInput(graph, v));
     if (implicants.length === 0) {
-        graph.output = addNode(graph, "CONST", [], "0");
-        return graph;
+      graph.output = addNode(graph, "CONST", [], "0");
+      return graph;
     }
-    if (implicants.length === 1 && implicants[0].pattern === "-".repeat(variables.length)) {
-        graph.output = addNode(graph, "CONST", [], "1");
-        return graph;
+    if (implicants.length === 1 && isAllDash(implicants[0], variables.length)) {
+      graph.output = addNode(graph, "CONST", [], "1");
+      return graph;
     }
-    const notMap = new Map();
+    const notMap = /* @__PURE__ */ new Map();
     const getNot = (varName) => {
-        if (!notMap.has(varName)) {
-            const inId = addInput(graph, varName);
-            const notId = addNode(graph, "NOT", [inId], `~${varName}`);
-            notMap.set(varName, notId);
-        }
-        return notMap.get(varName);
+      if (!notMap.has(varName)) {
+        const inId = addInput(graph, varName);
+        notMap.set(varName, addNode(graph, "NOT", [inId], `~${varName}`));
+      }
+      return notMap.get(varName);
     };
     const termNodeIds = [];
-    implicants.forEach(imp => {
-        const literalIds = [];
-        for (let i = 0; i < imp.pattern.length; i++) {
-            const bit = imp.pattern[i];
-            if (bit === "1")
-                literalIds.push(addInput(graph, variables[i]));
-            else if (bit === "0")
-                literalIds.push(getNot(variables[i]));
-        }
-        if (literalIds.length === 1) {
-            termNodeIds.push(literalIds[0]);
-        }
-        else if (literalIds.length > 1) {
-            termNodeIds.push(addNode(graph, "AND", literalIds));
-        }
+    implicants.forEach((imp) => {
+      const literalIds = [];
+      for (let i = 0; i < imp.pattern.length; i++) {
+        if (imp.pattern[i] === "1") literalIds.push(addInput(graph, variables[i]));
+        else if (imp.pattern[i] === "0") literalIds.push(getNot(variables[i]));
+      }
+      if (literalIds.length === 1) {
+        termNodeIds.push(literalIds[0]);
+      } else if (literalIds.length > 1) {
+        termNodeIds.push(addNode(graph, "AND", literalIds));
+      }
     });
-    if (termNodeIds.length === 1)
-        graph.output = termNodeIds[0];
-    else
-        graph.output = addNode(graph, "OR", termNodeIds);
+    graph.output = termNodeIds.length === 1 ? termNodeIds[0] : addNode(graph, "OR", termNodeIds);
     return graph;
-}
-function buildNANDCircuit(implicants, variables) {
+  }
+  function buildNANDCircuit(implicants, variables) {
     const graph = createGraph();
-    variables.forEach(v => addInput(graph, v));
+    variables.forEach((v) => addInput(graph, v));
     if (implicants.length === 0) {
-        graph.output = addNode(graph, "CONST", [], "0");
-        return graph;
+      graph.output = addNode(graph, "CONST", [], "0");
+      return graph;
     }
-    if (implicants.length === 1 && implicants[0].pattern === "-".repeat(variables.length)) {
-        graph.output = addNode(graph, "CONST", [], "1");
-        return graph;
+    if (implicants.length === 1 && isAllDash(implicants[0], variables.length)) {
+      graph.output = addNode(graph, "CONST", [], "1");
+      return graph;
     }
-    const notMap = new Map();
+    const notMap = /* @__PURE__ */ new Map();
     const getNandNot = (varName) => {
-        if (!notMap.has(varName)) {
-            const inId = addInput(graph, varName);
-            const notId = addNode(graph, "NAND", [inId, inId], `~${varName}`);
-            notMap.set(varName, notId);
-        }
-        return notMap.get(varName);
+      if (!notMap.has(varName)) {
+        const inId = addInput(graph, varName);
+        notMap.set(varName, addNode(graph, "NAND", [inId, inId], `~${varName}`));
+      }
+      return notMap.get(varName);
     };
     const layer1Ids = [];
-    implicants.forEach(imp => {
-        const literals = [];
-        for (let i = 0; i < imp.pattern.length; i++) {
-            const bit = imp.pattern[i];
-            if (bit === "1")
-                literals.push(addInput(graph, variables[i]));
-            else if (bit === "0")
-                literals.push(getNandNot(variables[i]));
-        }
-        if (literals.length === 1) {
-            const nandInv = addNode(graph, "NAND", [literals[0], literals[0]]);
-            layer1Ids.push(nandInv);
-        }
-        else {
-            layer1Ids.push(addNode(graph, "NAND", literals));
-        }
+    implicants.forEach((imp) => {
+      const literals = [];
+      for (let i = 0; i < imp.pattern.length; i++) {
+        if (imp.pattern[i] === "1") literals.push(addInput(graph, variables[i]));
+        else if (imp.pattern[i] === "0") literals.push(getNandNot(variables[i]));
+      }
+      if (literals.length === 1) {
+        layer1Ids.push(addNode(graph, "NAND", [literals[0], literals[0]]));
+      } else {
+        layer1Ids.push(addNode(graph, "NAND", literals));
+      }
     });
-    if (layer1Ids.length === 1) {
-        graph.output = addNode(graph, "NAND", [layer1Ids[0], layer1Ids[0]]);
-    }
-    else {
-        graph.output = addNode(graph, "NAND", layer1Ids);
-    }
+    graph.output = layer1Ids.length === 1 ? addNode(graph, "NAND", [layer1Ids[0], layer1Ids[0]]) : addNode(graph, "NAND", layer1Ids);
     return graph;
-}
-function buildNORCircuit(implicants, variables) {
+  }
+  function buildNORCircuit(implicants, variables) {
     const graph = createGraph();
-    variables.forEach(v => addInput(graph, v));
+    variables.forEach((v) => addInput(graph, v));
     if (implicants.length === 0) {
-        graph.output = addNode(graph, "CONST", [], "1");
-        return graph;
+      graph.output = addNode(graph, "CONST", [], "1");
+      return graph;
     }
-    if (implicants.length === 1 && implicants[0].pattern === "-".repeat(variables.length)) {
-        graph.output = addNode(graph, "CONST", [], "0");
-        return graph;
+    if (implicants.length === 1 && isAllDash(implicants[0], variables.length)) {
+      graph.output = addNode(graph, "CONST", [], "0");
+      return graph;
     }
-    const notMap = new Map();
+    const notMap = /* @__PURE__ */ new Map();
     const getNorNot = (varName) => {
-        if (!notMap.has(varName)) {
-            const inId = addInput(graph, varName);
-            const notId = addNode(graph, "NOR", [inId, inId], `~${varName}`);
-            notMap.set(varName, notId);
-        }
-        return notMap.get(varName);
+      if (!notMap.has(varName)) {
+        const inId = addInput(graph, varName);
+        notMap.set(varName, addNode(graph, "NOR", [inId, inId], `~${varName}`));
+      }
+      return notMap.get(varName);
     };
     const layer1Ids = [];
-    implicants.forEach(imp => {
-        const literals = [];
-        for (let i = 0; i < imp.pattern.length; i++) {
-            const bit = imp.pattern[i];
-            if (bit === "0")
-                literals.push(addInput(graph, variables[i]));
-            else if (bit === "1")
-                literals.push(getNorNot(variables[i]));
-        }
-        if (literals.length === 1) {
-            const norInv = addNode(graph, "NOR", [literals[0], literals[0]]);
-            layer1Ids.push(norInv);
-        }
-        else {
-            layer1Ids.push(addNode(graph, "NOR", literals));
-        }
+    implicants.forEach((imp) => {
+      const literals = [];
+      for (let i = 0; i < imp.pattern.length; i++) {
+        if (imp.pattern[i] === "0") literals.push(addInput(graph, variables[i]));
+        else if (imp.pattern[i] === "1") literals.push(getNorNot(variables[i]));
+      }
+      if (literals.length === 1) {
+        layer1Ids.push(addNode(graph, "NOR", [literals[0], literals[0]]));
+      } else {
+        layer1Ids.push(addNode(graph, "NOR", literals));
+      }
     });
-    if (layer1Ids.length === 1) {
-        graph.output = addNode(graph, "NOR", [layer1Ids[0], layer1Ids[0]]);
-    }
-    else {
-        graph.output = addNode(graph, "NOR", layer1Ids);
-    }
+    graph.output = layer1Ids.length === 1 ? addNode(graph, "NOR", [layer1Ids[0], layer1Ids[0]]) : addNode(graph, "NOR", layer1Ids);
     return graph;
-}
-/* =========================================================
-   EVALUATE CIRCUIT GRAPH
-========================================================= */
-function evaluateCircuit(graph, assignment) {
-    const memo = new Map();
+  }
+  function evaluateCircuit(graph, assignment) {
+    const memo = /* @__PURE__ */ new Map();
     function evaluateNode(id) {
-        var _a;
-        if (memo.has(id))
-            return memo.get(id);
-        const node = graph.nodes.find(n => n.id === id);
-        if (!node)
-            return false;
-        let result = false;
-        switch (node.type) {
-            case "INPUT":
-                result = (_a = assignment[node.label]) !== null && _a !== void 0 ? _a : false;
-                break;
-            case "CONST":
-                result = node.label === "1";
-                break;
-            case "NOT":
-                result = !evaluateNode(node.inputs[0]);
-                break;
-            case "AND":
-                result = node.inputs.every(inId => evaluateNode(inId));
-                break;
-            case "OR":
-                result = node.inputs.some(inId => evaluateNode(inId));
-                break;
-            case "NAND":
-                result = !node.inputs.every(inId => evaluateNode(inId));
-                break;
-            case "NOR":
-                result = !node.inputs.some(inId => evaluateNode(inId));
-                break;
-        }
-        memo.set(id, result);
-        return result;
+      const cached = memo.get(id);
+      if (cached !== void 0) return cached;
+      const node = graph.nodes.find((n) => n.id === id);
+      if (!node) return false;
+      let result = false;
+      switch (node.type) {
+        case "INPUT":
+          result = assignment[node.label] ?? false;
+          break;
+        case "CONST":
+          result = node.label === "1";
+          break;
+        case "NOT":
+          result = !evaluateNode(node.inputs[0]);
+          break;
+        case "AND":
+          result = node.inputs.every((inId) => evaluateNode(inId));
+          break;
+        case "OR":
+          result = node.inputs.some((inId) => evaluateNode(inId));
+          break;
+        case "NAND":
+          result = !node.inputs.every((inId) => evaluateNode(inId));
+          break;
+        case "NOR":
+          result = !node.inputs.some((inId) => evaluateNode(inId));
+          break;
+      }
+      memo.set(id, result);
+      return result;
     }
     return evaluateNode(graph.output);
-}
-function evaluateAllNodeValues(graph, assignment) {
-    const nodeValues = new Map();
+  }
+  function evaluateAllNodeValues(graph, assignment) {
+    const nodeValues = /* @__PURE__ */ new Map();
     function evalNode(id) {
-        var _a;
-        if (nodeValues.has(id))
-            return nodeValues.get(id);
-        const node = graph.nodes.find(n => n.id === id);
-        if (!node)
-            return false;
-        let val = false;
-        switch (node.type) {
-            case "INPUT":
-                val = (_a = assignment[node.label]) !== null && _a !== void 0 ? _a : false;
-                break;
-            case "CONST":
-                val = node.label === "1";
-                break;
-            case "NOT":
-                val = !evalNode(node.inputs[0]);
-                break;
-            case "AND":
-                val = node.inputs.every(inp => evalNode(inp));
-                break;
-            case "OR":
-                val = node.inputs.some(inp => evalNode(inp));
-                break;
-            case "NAND":
-                val = !node.inputs.every(inp => evalNode(inp));
-                break;
-            case "NOR":
-                val = !node.inputs.some(inp => evalNode(inp));
-                break;
-        }
-        nodeValues.set(id, val);
-        return val;
-    }
-    graph.nodes.forEach(n => evalNode(n.id));
-    return nodeValues;
-}
-/* =========================================================
-   GATE GEOMETRY & SCHEMATIC LAYOUT
-========================================================= */
-function getGateInfo(node) {
-    switch (node.type) {
+      const cached = nodeValues.get(id);
+      if (cached !== void 0) return cached;
+      const node = graph.nodes.find((n) => n.id === id);
+      if (!node) return false;
+      let val = false;
+      switch (node.type) {
         case "INPUT":
+          val = assignment[node.label] ?? false;
+          break;
         case "CONST":
-            return {
-                width: 90, height: 52,
-                inX: (x) => x, inY: (_, y) => y + 26,
-                outX: (x) => x + 90, outY: (_, y) => y + 26
-            };
+          val = node.label === "1";
+          break;
         case "NOT":
-            return {
-                width: 74, height: 52,
-                inX: (x) => x, inY: (_, y) => y + 26,
-                outX: (x) => x + 74, outY: (_, y) => y + 26
-            };
+          val = !evalNode(node.inputs[0]);
+          break;
         case "AND":
-            return {
-                width: 76, height: 52,
-                inX: (x) => x,
-                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
-                outX: (x) => x + 76, outY: (_, y) => y + 26
-            };
-        case "NAND":
-            return {
-                width: 93, height: 52,
-                inX: (x) => x,
-                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
-                outX: (x) => x + 93, outY: (_, y) => y + 26
-            };
+          val = node.inputs.every((inp) => evalNode(inp));
+          break;
         case "OR":
-            return {
-                width: 86, height: 52,
-                inX: (x, y, i, count) => {
-                    const inputY = getMultiInputY(y, 52, i, count);
-                    const dy = Math.abs(inputY - (y + 26));
-                    return x + Math.max(0, 18 * (1 - dy / 26));
-                },
-                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
-                outX: (x) => x + 86, outY: (_, y) => y + 26
-            };
+          val = node.inputs.some((inp) => evalNode(inp));
+          break;
+        case "NAND":
+          val = !node.inputs.every((inp) => evalNode(inp));
+          break;
         case "NOR":
-            return {
-                width: 100, height: 52,
-                inX: (x, y, i, count) => {
-                    const inputY = getMultiInputY(y, 52, i, count);
-                    const dy = Math.abs(inputY - (y + 26));
-                    return x + Math.max(0, 18 * (1 - dy / 26));
-                },
-                inY: (x, y, i, count) => getMultiInputY(y, 52, i, count),
-                outX: (x) => x + 100, outY: (_, y) => y + 26
-            };
+          val = !node.inputs.some((inp) => evalNode(inp));
+          break;
+      }
+      nodeValues.set(id, val);
+      return val;
     }
-}
-function getMultiInputY(y, h, i, count) {
-    if (count <= 1)
-        return y + h / 2;
+    graph.nodes.forEach((n) => evalNode(n.id));
+    return nodeValues;
+  }
+
+  // Web1/src/solver.ts
+  var SolverInputError = class extends Error {
+  };
+  function generateVariableNames(count) {
+    const names = [];
+    for (let i = 0; i < count; i++) {
+      names.push(String.fromCharCode(65 + i));
+    }
+    return names;
+  }
+  function assertVarLimit(count) {
+    if (count > LIMITS.MAX_VARIABLES) {
+      throw new SolverInputError(
+        `${count} variables exceeds the supported maximum of ${LIMITS.MAX_VARIABLES}.`
+      );
+    }
+  }
+  function joinLiteralsForDisplay(literals) {
+    let out = "";
+    literals.forEach((lit, i) => {
+      if (i > 0 && /[A-Za-z0-9_]/.test(out[out.length - 1]) && /[A-Za-z0-9_]/.test(lit[0])) {
+        out += "\xB7";
+      }
+      out += lit;
+    });
+    return out;
+  }
+  function sopDisplay(result, variables) {
+    if (result.isConstant) return result.constantValue ? "1" : "0";
+    if (result.implicants.length === 0) return "0";
+    return result.implicants.map((imp) => termToString(imp.pattern, variables)).join(" + ");
+  }
+  function generateCanonicalSOP(rows, variables, dontCares) {
+    const terms = rows.map((row, index) => ({ row, index })).filter(({ row, index }) => row.output === 1 && (!dontCares || !dontCares.has(index))).map(({ row }) => joinLiteralsForDisplay(
+      row.inputs.map((val, idx) => val ? variables[idx] : `${variables[idx]}'`)
+    ));
+    return terms.length > 0 ? terms.join(" + ") : "0";
+  }
+  function generateCanonicalPOS(rows, variables, dontCares) {
+    const clauses = rows.map((row, index) => ({ row, index })).filter(({ row, index }) => row.output === 0 && (!dontCares || !dontCares.has(index))).map(({ row }) => {
+      const sum = row.inputs.map((val, idx) => val ? `${variables[idx]}'` : variables[idx]).join(" + ");
+      return `(${sum})`;
+    });
+    return clauses.length > 0 ? clauses.join("") : "1";
+  }
+  function buildSolverModel(raw) {
+    switch (raw.mode) {
+      case "expression":
+        return fromExpression(raw.expression ?? "");
+      case "minterms":
+        return fromMintermList(raw.mintermCount, raw.mintermList ?? [], /* @__PURE__ */ new Set(), "minterms");
+      case "maxterms":
+        return fromMaxtermList(raw.maxtermCount, raw.maxtermList ?? []);
+      case "dontCare":
+        return fromDontCare(raw.dontCareCount, raw.dontCareMintermList ?? [], raw.dontCareList ?? []);
+      case "truthTable":
+        return fromTruthSelections(raw.truthSelections ?? []);
+      case "wordProblem":
+        return fromWordProblem(raw.wordProblem);
+    }
+  }
+  function finish(mode, variables, originalAst, originalDisplay, rows, dontCares) {
+    const ones = [];
+    const zeros = [];
+    rows.forEach((row, index) => {
+      if (row.output === 1) ones.push(index);
+      else if (row.output === 0) zeros.push(index);
+    });
+    const hasDontCares = dontCares.size > 0;
+    const dc = hasDontCares ? dontCares : void 0;
+    const sop = minimizeSOP(ones, variables, dc);
+    const pos = minimizePOS(zeros, variables, dc);
+    const simplifiedAst = sop.isConstant ? { kind: "const", value: !!sop.constantValue } : sopAstFromImplicants(sop.implicants, variables);
+    return {
+      mode,
+      variables,
+      rows,
+      ones,
+      zeros,
+      dontCares,
+      hasDontCares,
+      originalAst,
+      originalDisplay,
+      canonicalSOP: generateCanonicalSOP(rows, variables, dc),
+      canonicalPOS: generateCanonicalPOS(rows, variables, dc),
+      sop,
+      pos,
+      simplifiedAst,
+      simplifiedDisplay: sopDisplay(sop, variables),
+      simplifiedCoverTruncated: sop.coverTruncated
+    };
+  }
+  function astFromMinterms(minterms, variables) {
+    if (minterms.length === 0) return { kind: "const", value: false };
+    if (minterms.length === 1 << variables.length) return { kind: "const", value: true };
+    return minterms.map((m) => patternToTermAst(toPattern(m, variables.length), variables)).reduce((acc, term) => ({ kind: "or", left: acc, right: term }));
+  }
+  function toPattern(minterm, varCount) {
+    return minterm.toString(2).padStart(varCount, "0");
+  }
+  function mintermExpansionDisplay(minterms, varCount) {
+    const variables = generateVariableNames(varCount);
+    if (minterms.length === 0) return "0";
+    if (minterms.length === 1 << varCount) return "1";
+    return minterms.map((m) => termToString(toPattern(m, varCount), variables)).join(" + ");
+  }
+  function rowsFromMinterms(variableCount, minterms, dontCares) {
+    const combinations = generateCombinations(variableCount);
+    return combinations.map((inputs, index) => {
+      let output;
+      if (minterms.includes(index)) output = 1;
+      else if (dontCares.has(index)) output = -1;
+      else output = 0;
+      return { inputs, output };
+    });
+  }
+  function validateIndices(list, varCount, label) {
+    const maxVal = (1 << varCount) - 1;
+    const bad = list.filter((v) => !Number.isInteger(v) || v < 0 || v > maxVal);
+    if (bad.length > 0) {
+      throw new SolverInputError(
+        `${label} index out of range: ${bad.join(", ")}. For ${varCount} variables, valid indices are 0 to ${maxVal}.`
+      );
+    }
+  }
+  function fromExpression(expression) {
+    const trimmed = expression.trim();
+    const parsed = parseExpression(trimmed);
+    const variables = [...new Set(parsed.variables)].sort();
+    assertVarLimit(variables.length);
+    return finish("expression", variables, parsed.ast, trimmed, astTruthTable(parsed.ast, variables), /* @__PURE__ */ new Set());
+  }
+  function fromMintermList(count, mintermList, dontCares, _origin) {
+    assertVarLimit(count);
+    const variables = generateVariableNames(count);
+    validateIndices(mintermList, count, "Minterm");
+    const unique = [...new Set(mintermList)].sort((a, b) => a - b);
+    const ast = astFromMinterms(unique, variables);
+    const display = mintermExpansionDisplay(unique, count);
+    return finish("minterms", variables, ast, display, rowsFromMinterms(count, unique, dontCares), dontCares);
+  }
+  function fromMaxtermList(count, maxtermList) {
+    assertVarLimit(count);
+    const variables = generateVariableNames(count);
+    validateIndices(maxtermList, count, "Maxterm");
+    const unique = [...new Set(maxtermList)].sort((a, b) => a - b);
+    const zerosSet = new Set(unique);
+    const minterms = [];
+    for (let i = 0; i < 1 << count; i++) {
+      if (!zerosSet.has(i)) minterms.push(i);
+    }
+    const ast = astFromMinterms(minterms, variables);
+    const display = unique.length === 0 ? "1" : unique.length === 1 << count ? "0" : unique.map((m) => clauseToString(toPattern(m, count), variables)).join("");
+    return finish("maxterms", variables, ast, display, rowsFromMinterms(count, minterms, /* @__PURE__ */ new Set()), /* @__PURE__ */ new Set());
+  }
+  function fromDontCare(count, mintermList, dcList) {
+    assertVarLimit(count);
+    if (mintermList.length === 0 && dcList.length === 0) {
+      throw new SolverInputError("Please enter at least one minterm or don't-care term.");
+    }
+    const overlap = mintermList.filter((m) => dcList.includes(m));
+    if (overlap.length > 0) {
+      throw new SolverInputError(`Terms ${overlap.join(", ")} appear in both minterms and don't cares.`);
+    }
+    validateIndices(mintermList, count, "Minterm");
+    validateIndices(dcList, count, "Don't-care");
+    const dontCares = new Set(dcList);
+    return fromMintermList(count, mintermList, dontCares, "dontCare");
+  }
+  function fromTruthSelections(selections) {
+    const count = Math.log2(selections.length);
+    if (!Number.isInteger(count)) {
+      throw new SolverInputError("Truth table length must be a power of two.");
+    }
+    const variables = generateVariableNames(count);
+    const combinations = generateCombinations(count);
+    const minterms = [];
+    const dontCares = /* @__PURE__ */ new Set();
+    const rows = [];
+    selections.forEach((val, i) => {
+      if (val === "1") {
+        rows.push({ inputs: combinations[i], output: 1 });
+        minterms.push(i);
+      } else if (val === "X") {
+        rows.push({ inputs: combinations[i], output: -1 });
+        dontCares.add(i);
+      } else {
+        rows.push({ inputs: combinations[i], output: 0 });
+      }
+    });
+    return finish(
+      "truthTable",
+      variables,
+      astFromMinterms(minterms, variables),
+      mintermExpansionDisplay(minterms, count),
+      rows,
+      dontCares
+    );
+  }
+  function fromWordProblem(wp) {
+    if (wp.variables.length === 0) {
+      throw new SolverInputError("The AI backend couldn't identify any variables in that problem.");
+    }
+    assertVarLimit(wp.variables.length);
+    const dontCares = new Set(wp.dontCares.filter((d) => !wp.minterms.includes(d)));
+    const sorted = [...new Set(wp.minterms)].sort((a, b) => a - b);
+    validateIndices(sorted, wp.variables.length, "Minterm");
+    const display = sorted.length === 0 ? "0" : sorted.length === 1 << wp.variables.length ? "1" : sorted.map((m) => termToString(toPattern(m, wp.variables.length), wp.variables)).join(" + ");
+    return finish(
+      "wordProblem",
+      wp.variables,
+      astFromMinterms(sorted, wp.variables),
+      display,
+      rowsFromMinterms(wp.variables.length, sorted, dontCares),
+      dontCares
+    );
+  }
+  function verifySolution(model, circuits) {
+    for (let i = 0; i < model.rows.length; i++) {
+      const row = model.rows[i];
+      if (row.output === -1) continue;
+      const assignment = {};
+      model.variables.forEach((v, idx) => {
+        assignment[v] = row.inputs[idx] === 1;
+      });
+      const expected = row.output === 1;
+      if (evalAst(model.originalAst, assignment) !== expected || evalAst(model.simplifiedAst, assignment) !== expected || evaluateCircuit(circuits.basic, assignment) !== expected || evaluateCircuit(circuits.nand, assignment) !== expected || evaluateCircuit(circuits.nor, assignment) !== expected) {
+        return false;
+      }
+    }
+    return true;
+  }
+
+  // Web1/src/solverCore.ts
+  function parseNumberList(raw) {
+    return raw.split(/[\s,]+/).map((s) => s.trim()).filter((s) => s.length > 0).map(Number);
+  }
+
+  // Web1/src/ai/booleanApi.ts
+  var DEFAULT_API_BASE = "https://digitalcircuits.onrender.com";
+  var REQUEST_TIMEOUT_MS = 45e3;
+  var ApiError = class extends Error {
+  };
+  function apiBase() {
+    const override = window.DC_BOOLEAN_API_BASE;
+    const base = override || DEFAULT_API_BASE;
+    return base.replace(/\/+$/, "");
+  }
+  async function fetchMintermsFromProblem(problemStatement, options = {}) {
+    if (!problemStatement.trim()) {
+      throw new ApiError("Please describe the boolean logic problem.");
+    }
+    if (problemStatement.length > LIMITS.MAX_PROBLEM_LENGTH) {
+      throw new ApiError(
+        `The problem description is too long (${problemStatement.length} characters). Maximum supported length is ${LIMITS.MAX_PROBLEM_LENGTH}.`
+      );
+    }
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), REQUEST_TIMEOUT_MS);
+    const onExternalAbort = () => controller.abort();
+    options.signal?.addEventListener("abort", onExternalAbort);
+    try {
+      const response = await fetch(`${apiBase()}/api/solve-boolean`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ problem_statement: problemStatement }),
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        let detail = `Request failed (${response.status})`;
+        try {
+          const body = await response.json();
+          if (body && typeof body.detail === "string") detail = body.detail;
+        } catch {
+        }
+        throw new ApiError(detail);
+      }
+      const data = await response.json();
+      return {
+        variables: Array.isArray(data.variables) ? data.variables.map(String) : [],
+        minterms: Array.isArray(data.minterms) ? data.minterms.map(Number) : [],
+        dontCares: Array.isArray(data.dont_cares) ? data.dont_cares.map(Number) : [],
+        variableDescriptions: data.variable_descriptions && typeof data.variable_descriptions === "object" ? data.variable_descriptions : void 0
+      };
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new ApiError(
+          "The AI backend did not respond in time. Please try again in a moment."
+        );
+      }
+      throw new ApiError(
+        "Could not reach the AI backend. Check your connection and try again."
+      );
+    } finally {
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onExternalAbort);
+    }
+  }
+
+  // shared/ts/exporters/verilog.ts
+  function toVerilogExpr(node) {
+    switch (node.kind) {
+      case "var":
+        return node.name;
+      case "const":
+        return node.value ? "1'b1" : "1'b0";
+      case "not":
+        return `(~${toVerilogOperand(node.child)})`;
+      case "and":
+        return `(${toVerilogExpr(node.left)} & ${toVerilogExpr(node.right)})`;
+      case "or":
+        return `(${toVerilogExpr(node.left)} | ${toVerilogExpr(node.right)})`;
+      case "xor":
+        return `(${toVerilogExpr(node.left)} ^ ${toVerilogExpr(node.right)})`;
+    }
+  }
+  function toVerilogOperand(node) {
+    const atom = node.kind === "var" || node.kind === "const";
+    return atom ? toVerilogExpr(node) : `(${toVerilogExpr(node)})`;
+  }
+  function generateVerilogModule(ast, options = {}) {
+    const moduleName = options.moduleName ?? "bool_function";
+    const outputName = options.outputName ?? "F";
+    const inputs = options.inputs ?? [];
+    const portList = [
+      ...inputs.map((name) => `    input  wire ${name}`),
+      `    output wire ${outputName}`
+    ].join(",\n");
+    return `// Verilog HDL - Boolean Function Synthesis Module
+module ${moduleName} (
+${portList}
+);
+    assign ${outputName} = ${toVerilogExpr(ast)};
+endmodule`;
+  }
+
+  // shared/ts/exporters/c.ts
+  function toCExpr(node) {
+    switch (node.kind) {
+      case "var":
+        return node.name;
+      case "const":
+        return node.value ? "true" : "false";
+      case "not": {
+        const inner = node.child.kind === "var" || node.child.kind === "const" ? toCExpr(node.child) : `(${toCExpr(node.child)})`;
+        return `!${inner}`;
+      }
+      case "and":
+        return `(${toCExpr(node.left)} && ${toCExpr(node.right)})`;
+      case "or":
+        return `(${toCExpr(node.left)} || ${toCExpr(node.right)})`;
+      case "xor":
+        return `(${toCExpr(node.left)} != ${toCExpr(node.right)})`;
+    }
+  }
+  function generateCFunction(ast, options = {}) {
+    const functionName = options.functionName ?? "evaluate_logic";
+    const parameters = options.parameters ?? [];
+    const args = parameters.map((v) => `bool ${v}`).join(", ");
+    return `// C / C++ Boolean Function (requires <stdbool.h> in C)
+// Semantics verified equivalent to the solved truth table.
+bool ${functionName}(${args}) {
+    return ${toCExpr(ast)};
+}`;
+  }
+
+  // shared/ts/exporters/latex.ts
+  var IDENT_RE = /^[A-Za-z_][A-Za-z0-9_]*$/;
+  function latexVar(name) {
+    return IDENT_RE.test(name) && name.length > 1 ? `\\mathrm{${name}}` : name;
+  }
+  function toLatexExpr(node) {
+    switch (node.kind) {
+      case "var":
+        return latexVar(node.name);
+      case "const":
+        return node.value ? "1" : "0";
+      case "not":
+        return `\\overline{${toLatexExpr(node.child)}}`;
+      case "and":
+        return `${toLatexOperand(node.left, node.kind)} \\cdot ${toLatexOperand(node.right, node.kind)}`;
+      case "or":
+        return `${toLatexOperand(node.left, node.kind)} + ${toLatexOperand(node.right, node.kind)}`;
+      case "xor":
+        return `${toLatexOperand(node.left, node.kind)} \\oplus ${toLatexOperand(node.right, node.kind)}`;
+    }
+  }
+  function toLatexOperand(node, parentKind) {
+    const PREC = { or: 1, xor: 2, and: 3, not: 4, var: 5, const: 5 };
+    if (PREC[node.kind] < PREC[parentKind]) {
+      return `\\left(${toLatexExpr(node)}\\right)`;
+    }
+    return toLatexExpr(node);
+  }
+  function generateLatex(ast, outputName = "F") {
+    return `$$${outputName} = ${toLatexExpr(ast)}$$`;
+  }
+
+  // Web1/src/state.ts
+  var state = {
+    variables: [],
+    rows: [],
+    graphs: { basic: null, nand: null, nor: null },
+    probeState: {},
+    kmap: { implicants: null, variables: [] }
+  };
+
+  // Web1/src/circuits/gates.ts
+  function getMultiInputY(y, h, i, count) {
+    if (count <= 1) return y + h / 2;
     const margin = 10;
     const available = h - 2 * margin;
     const step = available / (count - 1);
     return y + margin + i * step;
-}
-function calculateLevels(graph) {
-    const levels = new Map();
-    function getLevel(id) {
-        if (levels.has(id))
-            return levels.get(id);
-        const node = graph.nodes.find(n => n.id === id);
-        if (!node)
-            return 0;
-        if (node.type === "INPUT" || node.type === "CONST") {
-            levels.set(id, 0);
-            return 0;
-        }
-        let maxIn = -1;
-        node.inputs.forEach(inId => {
-            maxIn = Math.max(maxIn, getLevel(inId));
-        });
-        const lvl = maxIn + 1;
-        levels.set(id, lvl);
-        return lvl;
+  }
+  function getGateInfo(node) {
+    switch (node.type) {
+      case "INPUT":
+      case "CONST":
+        return {
+          width: 90,
+          height: 52,
+          inX: (x) => x,
+          inY: (_, y) => y + 26,
+          outX: (x) => x + 90,
+          outY: (_, y) => y + 26
+        };
+      case "NOT":
+        return {
+          width: 74,
+          height: 52,
+          inX: (x) => x,
+          inY: (_, y) => y + 26,
+          outX: (x) => x + 74,
+          outY: (_, y) => y + 26
+        };
+      case "AND":
+        return {
+          width: 76,
+          height: 52,
+          inX: (x) => x,
+          inY: (_x, y, i, count) => getMultiInputY(y, 52, i, count),
+          outX: (x) => x + 76,
+          outY: (_, y) => y + 26
+        };
+      case "NAND":
+        return {
+          width: 93,
+          height: 52,
+          inX: (x) => x,
+          inY: (_x, y, i, count) => getMultiInputY(y, 52, i, count),
+          outX: (x) => x + 93,
+          outY: (_, y) => y + 26
+        };
+      case "OR":
+        return {
+          width: 86,
+          height: 52,
+          // OR inputs sit on a curved back edge; pins inset toward the
+          // center line proportionally to their vertical offset.
+          inX: (x, y, i, count) => {
+            const inputY = getMultiInputY(y, 52, i, count);
+            const dy = Math.abs(inputY - (y + 26));
+            return x + Math.max(0, 18 * (1 - dy / 26));
+          },
+          inY: (_x, y, i, count) => getMultiInputY(y, 52, i, count),
+          outX: (x) => x + 86,
+          outY: (_, y) => y + 26
+        };
+      case "NOR":
+        return {
+          width: 100,
+          height: 52,
+          inX: (x, y, i, count) => {
+            const inputY = getMultiInputY(y, 52, i, count);
+            const dy = Math.abs(inputY - (y + 26));
+            return x + Math.max(0, 18 * (1 - dy / 26));
+          },
+          inY: (_x, y, i, count) => getMultiInputY(y, 52, i, count),
+          outX: (x) => x + 100,
+          outY: (_, y) => y + 26
+        };
     }
-    graph.nodes.forEach(n => getLevel(n.id));
-    return levels;
-}
-function calculateCircuitLayout(graph) {
-    const levels = calculateLevels(graph);
-    const nodesByLevel = new Map();
-    levels.forEach((lvl, id) => {
-        if (!nodesByLevel.has(lvl))
-            nodesByLevel.set(lvl, []);
-        const node = graph.nodes.find(n => n.id === id);
-        if (node)
-            nodesByLevel.get(lvl).push(node);
-    });
-    const levelGap = 200;
-    const paddingX = 40;
-    const paddingY = 40;
-    const gateHeight = 52;
-    const nodeGapY = 32;
-    const positions = new Map();
-    let maxTotalHeight = 0;
-    const sortedLevels = [...nodesByLevel.keys()].sort((a, b) => a - b);
-    sortedLevels.forEach(lvl => {
-        const list = nodesByLevel.get(lvl);
-        const totalHeight = list.length * gateHeight + (list.length - 1) * nodeGapY;
-        maxTotalHeight = Math.max(maxTotalHeight, totalHeight);
-    });
-    const circuitHeight = Math.max(260, maxTotalHeight + 2 * paddingY);
-    sortedLevels.forEach(lvl => {
-        const list = nodesByLevel.get(lvl);
-        const totalH = list.length * gateHeight + (list.length - 1) * nodeGapY;
-        const startY = (circuitHeight - totalH) / 2;
-        const x = paddingX + lvl * levelGap;
-        list.forEach((node, idx) => {
-            const y = startY + idx * (gateHeight + nodeGapY);
-            positions.set(node.id, { x, y, level: lvl });
-        });
-    });
-    const maxLevel = Math.max(0, ...sortedLevels);
-    const lastLevelNodes = nodesByLevel.get(maxLevel) || [];
-    const maxNodeWidth = lastLevelNodes.reduce((m, n) => Math.max(m, getGateInfo(n).width), 90);
-    const circuitWidth = paddingX + maxLevel * levelGap + maxNodeWidth + 120;
-    return { positions, levels, width: circuitWidth, height: circuitHeight, levelGap, paddingX, paddingY };
-}
-/* =========================================================
-   SVG GATE RENDERING & WIRE ROUTING
-========================================================= */
-function renderGateSVG(node, pos) {
+  }
+  function renderGateSVG(node, pos) {
     const x = pos.x;
     const y = pos.y;
     const centerY = y + 26;
-    let svg = "";
     if (node.type === "INPUT" || node.type === "CONST") {
-        svg += `
+      return `
             <g class="circuit-gate-group pin-interactive" data-node-id="${node.id}" data-var="${node.label}">
                 <rect x="${x}" y="${y}" width="90" height="52" rx="10" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2" />
-                <text x="${x + 45}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="15" fill="var(--text-primary)">${node.label}</text>
+                <text x="${x + 45}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="15" fill="var(--text-primary)">${escapeSvgText(node.label)}</text>
             </g>
         `;
-        return svg;
     }
     if (node.type === "NOT") {
-        svg += `
+      return `
             <g class="circuit-gate-group" data-node-id="${node.id}">
                 <polygon points="${x},${y} ${x + 60},${centerY} ${x},${y + 52}" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <circle cx="${x + 67}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <text x="${x + 20}" y="${centerY + 5}" font-weight="800" font-size="12" fill="var(--text-primary)">NOT</text>
             </g>
         `;
-        return svg;
     }
     if (node.type === "AND") {
-        svg += `
+      return `
             <g class="circuit-gate-group" data-node-id="${node.id}">
                 <path d="M ${x} ${y} h 50 a 26 26 0 0 1 0 52 h -50 z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <text x="${x + 34}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)">AND</text>
             </g>
         `;
     }
-    else if (node.type === "NAND") {
-        svg += `
+    if (node.type === "NAND") {
+      return `
             <g class="circuit-gate-group" data-node-id="${node.id}">
                 <path d="M ${x} ${y} h 50 a 26 26 0 0 1 0 52 h -50 z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <circle cx="${x + 86}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
@@ -1025,183 +1299,227 @@ function renderGateSVG(node, pos) {
             </g>
         `;
     }
-    else if (node.type === "OR") {
-        svg += `
+    if (node.type === "OR") {
+      return `
             <g class="circuit-gate-group" data-node-id="${node.id}">
                 <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="13" fill="var(--text-primary)">OR</text>
             </g>
         `;
     }
-    else if (node.type === "NOR") {
-        svg += `
-            <g class="circuit-gate-group" data-node-id="${node.id}">
-                <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
-                <circle cx="${x + 93}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
-                <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="12" fill="var(--text-primary)">NOR</text>
-            </g>
-        `;
+    return `
+        <g class="circuit-gate-group" data-node-id="${node.id}">
+            <path d="M ${x} ${y} Q ${x + 18} ${centerY} ${x} ${y + 52} Q ${x + 48} ${y + 52} ${x + 86} ${centerY} Q ${x + 48} ${y} ${x} ${y} Z" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+            <circle cx="${x + 93}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
+            <text x="${x + 40}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="12" fill="var(--text-primary)">NOR</text>
+        </g>
+    `;
+  }
+  function escapeSvgText(text) {
+    return text.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+  }
+
+  // Web1/src/circuits/layout.ts
+  function calculateLevels(graph) {
+    const levels = /* @__PURE__ */ new Map();
+    function getLevel(id) {
+      const cached = levels.get(id);
+      if (cached !== void 0) return cached;
+      const node = graph.nodes.find((n) => n.id === id);
+      if (!node) return 0;
+      if (node.type === "INPUT" || node.type === "CONST") {
+        levels.set(id, 0);
+        return 0;
+      }
+      let maxIn = -1;
+      node.inputs.forEach((inId) => {
+        maxIn = Math.max(maxIn, getLevel(inId));
+      });
+      const lvl = maxIn + 1;
+      levels.set(id, lvl);
+      return lvl;
     }
-    return svg;
-}
-function formatHopPathH(x1, x2, y, crossXs) {
+    graph.nodes.forEach((n) => getLevel(n.id));
+    return levels;
+  }
+  function calculateCircuitLayout(graph) {
+    const levels = calculateLevels(graph);
+    const nodesByLevel = /* @__PURE__ */ new Map();
+    levels.forEach((lvl, id) => {
+      if (!nodesByLevel.has(lvl)) nodesByLevel.set(lvl, []);
+      const node = graph.nodes.find((n) => n.id === id);
+      if (node) nodesByLevel.get(lvl).push(node);
+    });
+    const levelGap = 200;
+    const paddingX = 40;
+    const paddingY = 40;
+    const gateHeight = 52;
+    const nodeGapY = 32;
+    const positions = /* @__PURE__ */ new Map();
+    let maxTotalHeight = 0;
+    const sortedLevels = [...nodesByLevel.keys()].sort((a, b) => a - b);
+    sortedLevels.forEach((lvl) => {
+      const list = nodesByLevel.get(lvl);
+      const totalHeight = list.length * gateHeight + (list.length - 1) * nodeGapY;
+      maxTotalHeight = Math.max(maxTotalHeight, totalHeight);
+    });
+    const circuitHeight = Math.max(260, maxTotalHeight + 2 * paddingY);
+    sortedLevels.forEach((lvl) => {
+      const list = nodesByLevel.get(lvl);
+      const totalH = list.length * gateHeight + (list.length - 1) * nodeGapY;
+      const startY = (circuitHeight - totalH) / 2;
+      const x = paddingX + lvl * levelGap;
+      list.forEach((node, idx) => {
+        positions.set(node.id, { x, y: startY + idx * (gateHeight + nodeGapY), level: lvl });
+      });
+    });
+    const maxLevel = Math.max(0, ...sortedLevels);
+    const lastLevelNodes = nodesByLevel.get(maxLevel) || [];
+    const maxNodeWidth = lastLevelNodes.reduce((m, n) => Math.max(m, getGateInfo(n).width), 90);
+    const circuitWidth = paddingX + maxLevel * levelGap + maxNodeWidth + 120;
+    return { positions, levels, width: circuitWidth, height: circuitHeight, levelGap, paddingX, paddingY };
+  }
+
+  // Web1/src/circuits/renderer.ts
+  function formatHopPathH(x1, x2, y, crossXs) {
     const minX = Math.min(x1, x2);
     const maxX = Math.max(x1, x2);
     const isLtoR = x1 <= x2;
-    const valid = crossXs.filter(cx => cx > minX + 8 && cx < maxX - 8).sort((a, b) => isLtoR ? a - b : b - a);
+    const valid = crossXs.filter((cx) => cx > minX + 8 && cx < maxX - 8).sort((a, b) => isLtoR ? a - b : b - a);
     if (valid.length === 0) {
-        return `M ${x1} ${y} H ${x2}`;
+      return `M ${x1} ${y} H ${x2}`;
     }
     let d = `M ${x1} ${y}`;
-    valid.forEach(cx => {
-        if (isLtoR) {
-            d += ` H ${cx - 7} A 7 7 0 0 1 ${cx + 7} ${y}`;
-        }
-        else {
-            d += ` H ${cx + 7} A 7 7 0 0 1 ${cx - 7} ${y}`;
-        }
+    valid.forEach((cx) => {
+      if (isLtoR) {
+        d += ` H ${cx - 7} A 7 7 0 0 1 ${cx + 7} ${y}`;
+      } else {
+        d += ` H ${cx + 7} A 7 7 0 0 1 ${cx - 7} ${y}`;
+      }
     });
     d += ` H ${x2}`;
     return d;
-}
-function renderEdgesSVG(graph, layout) {
+  }
+  function renderEdgesSVG(graph, layout) {
     let svg = "";
     const { positions, levels } = layout;
     const edges = [];
-    graph.nodes.forEach(targetNode => {
-        const seen = new Map();
-        targetNode.inputs.forEach((sourceId, inputIndex) => {
-            if (!seen.has(sourceId))
-                seen.set(sourceId, []);
-            seen.get(sourceId).push(inputIndex);
+    graph.nodes.forEach((targetNode) => {
+      const seen = /* @__PURE__ */ new Map();
+      targetNode.inputs.forEach((sourceId, inputIndex) => {
+        if (!seen.has(sourceId)) seen.set(sourceId, []);
+        seen.get(sourceId).push(inputIndex);
+      });
+      seen.forEach((indices, sourceId) => {
+        const sourceNode = graph.nodes.find((n) => n.id === sourceId);
+        const sourcePos = positions.get(sourceId);
+        const targetPos = positions.get(targetNode.id);
+        if (!sourceNode || !sourcePos || !targetPos) return;
+        const sourceInfo = getGateInfo(sourceNode);
+        const targetInfo = getGateInfo(targetNode);
+        const x1 = sourceInfo.outX(sourcePos.x);
+        const y1 = sourceInfo.outY(sourcePos.x, sourcePos.y);
+        let sumY2 = 0;
+        let sumX2 = 0;
+        indices.forEach((i) => {
+          sumX2 += targetInfo.inX(targetPos.x, targetPos.y, i, targetNode.inputs.length);
+          sumY2 += targetInfo.inY(targetPos.x, targetPos.y, i, targetNode.inputs.length);
         });
-        seen.forEach((indices, sourceId) => {
-            const sourceNode = graph.nodes.find(n => n.id === sourceId);
-            const sourcePos = positions.get(sourceId);
-            const targetPos = positions.get(targetNode.id);
-            if (!sourceNode || !sourcePos || !targetPos)
-                return;
-            const sourceInfo = getGateInfo(sourceNode);
-            const targetInfo = getGateInfo(targetNode);
-            const x1 = sourceInfo.outX(sourcePos.x);
-            const y1 = sourceInfo.outY(sourcePos.x, sourcePos.y);
-            let sumY2 = 0;
-            let sumX2 = 0;
-            indices.forEach(i => {
-                sumX2 += targetInfo.inX(targetPos.x, targetPos.y, i, targetNode.inputs.length);
-                sumY2 += targetInfo.inY(targetPos.x, targetPos.y, i, targetNode.inputs.length);
-            });
-            const x2 = sumX2 / indices.length;
-            const y2 = sumY2 / indices.length;
-            edges.push({
-                sourceId,
-                targetId: targetNode.id,
-                x1, y1, x2, y2,
-                sourceLevel: levels.get(sourceId),
-                targetLevel: levels.get(targetNode.id)
-            });
+        edges.push({
+          sourceId,
+          targetId: targetNode.id,
+          x1,
+          y1,
+          x2: sumX2 / indices.length,
+          y2: sumY2 / indices.length,
+          sourceLevel: levels.get(sourceId),
+          targetLevel: levels.get(targetNode.id)
         });
+      });
     });
-    const gapGroups = new Map();
-    edges.forEach(edge => {
-        const key = `${edge.sourceLevel}->${edge.targetLevel}`;
-        if (!gapGroups.has(key))
-            gapGroups.set(key, []);
-        gapGroups.get(key).push(edge);
+    const gapGroups = /* @__PURE__ */ new Map();
+    edges.forEach((edge) => {
+      const key = `${edge.sourceLevel}->${edge.targetLevel}`;
+      if (!gapGroups.has(key)) gapGroups.set(key, []);
+      gapGroups.get(key).push(edge);
     });
     gapGroups.forEach((groupEdges) => {
-        const sourceMap = new Map();
-        groupEdges.forEach(edge => {
-            if (!sourceMap.has(edge.sourceId))
-                sourceMap.set(edge.sourceId, []);
-            sourceMap.get(edge.sourceId).push(edge);
-        });
-        const sources = Array.from(sourceMap.entries()).map(([id, sEdges]) => ({
-            id,
-            edges: sEdges,
-            x1: sEdges[0].x1,
-            y1: sEdges[0].y1,
-            minTargetX: Math.min(...sEdges.map(e => e.x2))
-        }));
-        sources.sort((a, b) => a.y1 - b.y1);
-        const maxSourceX = Math.max(...sources.map(s => s.x1));
-        const minTargetX = Math.min(...sources.map(s => s.minTargetX));
-        let gapStart = maxSourceX + 16;
-        let gapEnd = minTargetX - 16;
-        if (gapEnd - gapStart < 35) {
-            const mid = (maxSourceX + minTargetX) / 2;
-            gapStart = mid - 22;
-            gapEnd = mid + 22;
+      const sourceMap = /* @__PURE__ */ new Map();
+      groupEdges.forEach((edge) => {
+        if (!sourceMap.has(edge.sourceId)) sourceMap.set(edge.sourceId, []);
+        sourceMap.get(edge.sourceId).push(edge);
+      });
+      const sources = Array.from(sourceMap.entries()).map(([id, sEdges]) => ({
+        id,
+        edges: sEdges,
+        x1: sEdges[0].x1,
+        y1: sEdges[0].y1
+      }));
+      sources.sort((a, b) => a.y1 - b.y1);
+      const maxSourceX = Math.max(...sources.map((s) => s.x1));
+      const minTargetX = Math.min(...sources.flatMap((s) => s.edges.map((e) => e.x2)));
+      let gapStart = maxSourceX + 16;
+      let gapEnd = minTargetX - 16;
+      if (gapEnd - gapStart < 35) {
+        const mid = (maxSourceX + minTargetX) / 2;
+        gapStart = mid - 22;
+        gapEnd = mid + 22;
+      }
+      const available = Math.max(35, gapEnd - gapStart);
+      const effectiveStep = available / (sources.length + 1);
+      const vBuses = [];
+      sources.forEach((source, idx) => {
+        const { y1, edges: sEdges } = source;
+        const flatSingle = sEdges.length === 1 && Math.abs(y1 - sEdges[0].y2) < 1.5;
+        if (!flatSingle) {
+          const allY = [y1, ...sEdges.map((e) => e.y2)];
+          vBuses.push({
+            busX: gapStart + (idx + 1) * effectiveStep,
+            minY: Math.min(...allY),
+            maxY: Math.max(...allY),
+            sourceId: source.id
+          });
         }
-        const available = Math.max(35, gapEnd - gapStart);
-        const effectiveStep = available / (sources.length + 1);
-        // Pre-compute all vertical buses in this gap
-        const vBuses = [];
-        sources.forEach((source, idx) => {
-            const busX = gapStart + (idx + 1) * effectiveStep;
-            const { y1, edges: sEdges } = source;
-            if (sEdges.length === 1 && Math.abs(y1 - sEdges[0].y2) < 1.5) {
-                // Direct line, no vertical span
+      });
+      sources.forEach((source, idx) => {
+        const busEntry = vBuses.find((v) => v.sourceId === source.id);
+        const busX = busEntry ? busEntry.busX : gapStart + (idx + 1) * effectiveStep;
+        const { id: srcId, x1, y1, edges: sEdges } = source;
+        const getCrossings = (hX1, hX2, hY) => vBuses.filter((v) => v.sourceId !== srcId && v.busX > Math.min(hX1, hX2) + 6 && v.busX < Math.max(hX1, hX2) - 6 && v.minY <= hY && hY <= v.maxY).map((v) => v.busX);
+        if (sEdges.length === 1) {
+          const { x2, y2 } = sEdges[0];
+          if (Math.abs(y1 - y2) < 1.5) {
+            const d = formatHopPathH(x1, x2, y1, getCrossings(x1, x2, y1));
+            svg += wirePath(d, srcId);
+          } else {
+            const d1 = formatHopPathH(x1, busX, y1, getCrossings(x1, busX, y1));
+            const d3 = formatHopPathH(busX, x2, y2, getCrossings(busX, x2, y2));
+            svg += wirePath(`${d1} V ${y2} ${d3.replace(`M ${busX} ${y2}`, "")}`, srcId);
+          }
+        } else {
+          const allY = [y1, ...sEdges.map((e) => e.y2)];
+          const minY = Math.min(...allY);
+          const maxY = Math.max(...allY);
+          svg += wirePath(formatHopPathH(x1, busX, y1, getCrossings(x1, busX, y1)), srcId);
+          svg += wirePath(`M ${busX} ${minY} V ${maxY}`, srcId);
+          svg += `<circle cx="${busX}" cy="${y1}" r="3.8" class="circuit-junction" data-source-id="${srcId}" fill="var(--wire-low)" />`;
+          sEdges.forEach((edge) => {
+            svg += wirePath(formatHopPathH(busX, edge.x2, edge.y2, getCrossings(busX, edge.x2, edge.y2)), srcId);
+            if (Math.abs(edge.y2 - y1) > 1) {
+              svg += `<circle cx="${busX}" cy="${edge.y2}" r="3.8" class="circuit-junction" data-source-id="${srcId}" fill="var(--wire-low)" />`;
             }
-            else {
-                const allY = [y1, ...sEdges.map(e => e.y2)];
-                const minY = Math.min(...allY);
-                const maxY = Math.max(...allY);
-                vBuses.push({ busX, minY, maxY, source });
-            }
-        });
-        sources.forEach((source, idx) => {
-            const busInfo = vBuses.find(v => v.source.id === source.id);
-            const busX = busInfo ? busInfo.busX : (gapStart + (idx + 1) * effectiveStep);
-            const { id: srcId, x1, y1, edges: sEdges } = source;
-            const getCrossings = (hX1, hX2, hY) => {
-                const minH = Math.min(hX1, hX2);
-                const maxH = Math.max(hX1, hX2);
-                return vBuses
-                    .filter(v => v.source.id !== srcId && v.busX > minH + 6 && v.busX < maxH - 6 && v.minY <= hY && hY <= v.maxY)
-                    .map(v => v.busX);
-            };
-            if (sEdges.length === 1) {
-                const { x2, y2 } = sEdges[0];
-                if (Math.abs(y1 - y2) < 1.5) {
-                    const crossings = getCrossings(x1, x2, y1);
-                    const d = formatHopPathH(x1, x2, y1, crossings);
-                    svg += `<path d="${d}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
-                }
-                else {
-                    const c1 = getCrossings(x1, busX, y1);
-                    const d1 = formatHopPathH(x1, busX, y1, c1);
-                    const c3 = getCrossings(busX, x2, y2);
-                    const d3 = formatHopPathH(busX, x2, y2, c3);
-                    svg += `<path d="${d1} V ${y2} ${d3.replace(`M ${busX} ${y2}`, '')}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
-                }
-            }
-            else {
-                const allY = [y1, ...sEdges.map(e => e.y2)];
-                const minY = Math.min(...allY);
-                const maxY = Math.max(...allY);
-                const cLead = getCrossings(x1, busX, y1);
-                const dLead = formatHopPathH(x1, busX, y1, cLead);
-                svg += `<path d="${dLead}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
-                svg += `<path d="M ${busX} ${minY} V ${maxY}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
-                svg += `<circle cx="${busX}" cy="${y1}" r="3.8" class="circuit-junction" data-source-id="${srcId}" fill="var(--wire-low)" />`;
-                sEdges.forEach(edge => {
-                    const cBranch = getCrossings(busX, edge.x2, edge.y2);
-                    const dBranch = formatHopPathH(busX, edge.x2, edge.y2, cBranch);
-                    svg += `<path d="${dBranch}" class="circuit-wire" data-source-id="${srcId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
-                    if (Math.abs(edge.y2 - y1) > 1) {
-                        svg += `<circle cx="${busX}" cy="${edge.y2}" r="3.8" class="circuit-junction" data-source-id="${srcId}" fill="var(--wire-low)" />`;
-                    }
-                });
-            }
-        });
+          });
+        }
+      });
     });
     return svg;
-}
-function renderCircuit(graph, container, title) {
+  }
+  function wirePath(d, sourceId) {
+    return `<path d="${d}" class="circuit-wire" data-source-id="${sourceId}" stroke="var(--wire-low)" stroke-width="2.2" fill="none" />`;
+  }
+  function renderCircuit(graph, container, options = {}) {
     container.innerHTML = "";
-    if (!graph || !graph.output)
-        return;
+    if (!graph || !graph.output) return;
     const layout = calculateCircuitLayout(graph);
     let svg = `
         <svg class="circuit-svg" xmlns="http://www.w3.org/2000/svg"
@@ -1209,10 +1527,10 @@ function renderCircuit(graph, container, title) {
              viewBox="0 0 ${layout.width} ${layout.height}">
     `;
     svg += renderEdgesSVG(graph, layout);
-    graph.nodes.forEach(node => {
-        svg += renderGateSVG(node, layout.positions.get(node.id));
+    graph.nodes.forEach((node) => {
+      svg += renderGateSVG(node, layout.positions.get(node.id));
     });
-    const outputNode = graph.nodes.find(node => node.id === graph.output);
+    const outputNode = graph.nodes.find((node) => node.id === graph.output);
     const outputPos = layout.positions.get(graph.output);
     const outputInfo = getGateInfo(outputNode);
     const outX = outputInfo.outX(outputPos.x);
@@ -1226,238 +1544,603 @@ function renderCircuit(graph, container, title) {
     `;
     svg += "</svg>";
     container.innerHTML = svg;
-    container.querySelectorAll(".pin-interactive").forEach(group => {
-        group.addEventListener("click", () => {
-            const varName = group.getAttribute("data-var");
-            if (varName && currentProbeState.hasOwnProperty(varName)) {
-                currentProbeState[varName] = !currentProbeState[varName];
-                if (window.StudioFX)
-                    window.StudioFX.click(currentProbeState[varName]);
-                updateProbeUI();
-                updateCircuitSignals();
-            }
-        });
+    container.querySelectorAll(".pin-interactive").forEach((group) => {
+      group.addEventListener("click", () => {
+        const varName = group.getAttribute("data-var");
+        if (varName && options.onPinToggle) options.onPinToggle(varName);
+      });
     });
-}
-/* =========================================================
-   LIVE PROBE CONTROLLER & MULTIMETER HUD
-========================================================= */
-function setupProbePanels(variables) {
-    currentProbeState = {};
-    variables.forEach(v => { currentProbeState[v] = false; });
-    ["probeSwitchesBasic", "probeSwitchesNand", "probeSwitchesNor"].forEach(panelId => {
-        const panel = document.getElementById(panelId);
-        if (!panel)
-            return;
-        panel.innerHTML = variables.map(v => `
-            <div class="probe-switch" data-var="${v}">
-                <span>${v}</span>
+  }
+
+  // Web1/src/kmap/kmap.ts
+  function grayCode(n) {
+    const result = [];
+    const total = 1 << n;
+    for (let i = 0; i < total; i++) {
+      result.push(i ^ i >> 1);
+    }
+    return result;
+  }
+  function patternToMinterms(pattern) {
+    const dashPositions = [];
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i] === "-") dashPositions.push(i);
+    }
+    const total = 1 << dashPositions.length;
+    const result = [];
+    for (let mask = 0; mask < total; mask++) {
+      let minterm = 0;
+      for (let i = 0; i < pattern.length; i++) {
+        if (pattern[i] === "1") {
+          minterm |= 1 << pattern.length - 1 - i;
+        } else if (pattern[i] === "-") {
+          const dashPos = dashPositions.indexOf(i);
+          if (mask & 1 << dashPos) {
+            minterm |= 1 << pattern.length - 1 - i;
+          }
+        }
+      }
+      result.push(minterm);
+    }
+    return result;
+  }
+  function computeKMapGrid(variableCount) {
+    if (variableCount < 2 || variableCount > 4) return null;
+    let colBits;
+    let rowBits;
+    if (variableCount === 2) {
+      rowBits = 1;
+      colBits = 1;
+    } else if (variableCount === 3) {
+      rowBits = 1;
+      colBits = 2;
+    } else {
+      rowBits = 2;
+      colBits = 2;
+    }
+    const colGray = grayCode(colBits);
+    const rowGray = grayCode(rowBits);
+    const grid = [];
+    for (let ri = 0; ri < rowGray.length; ri++) {
+      grid[ri] = [];
+      for (let ci = 0; ci < colGray.length; ci++) {
+        let minterm = 0;
+        for (let b = 0; b < rowBits; b++) {
+          if (rowGray[ri] & 1 << rowBits - 1 - b) {
+            minterm |= 1 << variableCount - 1 - b;
+          }
+        }
+        for (let b = 0; b < colBits; b++) {
+          if (colGray[ci] & 1 << colBits - 1 - b) {
+            minterm |= 1 << variableCount - 1 - rowBits - b;
+          }
+        }
+        grid[ri][ci] = minterm;
+      }
+    }
+    return { grid, rowCount: rowGray.length, colCount: colGray.length };
+  }
+  var BORDER_COLORS = ["#ef4444", "#2563eb", "#16a34a", "#ea580c", "#9333ea"];
+  function kmapBorderColor(index) {
+    return BORDER_COLORS[index % BORDER_COLORS.length];
+  }
+  function labelJoin(names) {
+    return names.every((n) => n.length === 1) ? names.join("") : names.join(", ");
+  }
+  function generateKarnaughMap(args) {
+    const { variables, rows, dontCares, implicants } = args;
+    const info = computeKMapGrid(variables.length);
+    if (!info) {
+      return `<div class="help-text" style="text-align:center;">Karnaugh maps are displayed for 2 to 4 variables.</div>`;
+    }
+    const { grid, rowCount, colCount } = info;
+    const rowLabels = grayCode(Math.log2(rowCount)).map((v) => v.toString(2).padStart(Math.log2(rowCount), "0"));
+    const colLabels = grayCode(Math.log2(colCount)).map((v) => v.toString(2).padStart(Math.log2(colCount), "0"));
+    const rowBits = Math.log2(rowCount);
+    const colBits = Math.log2(colCount);
+    const rowVarStr = labelJoin(variables.slice(0, rowBits));
+    const colVarStr = labelJoin(variables.slice(rowBits));
+    const legendHTML = implicants && implicants.length > 0 ? `<div class="karnaugh-map-legend">
+            ${implicants.map((imp, i) => `
+                <span class="legend-item">
+                    <span class="legend-swatch" style="border-color:${kmapBorderColor(i)};background:${kmapBorderColor(i)}20"></span>
+                    ${termToString(imp.pattern, variables)}
+                </span>`).join("")}
+        </div>` : "";
+    let html = `<div class="karnaugh-map-wrapper">`;
+    html += `<div id="karnaughMapGrid" style="position:relative;display:inline-block;">`;
+    html += `<table class="karnaugh-map">`;
+    html += `<thead><tr><th style="font-size:14px;">${rowVarStr}\\${colVarStr}</th>`;
+    for (const label of colLabels) html += `<th>${label}</th>`;
+    html += `</tr></thead><tbody>`;
+    for (let ri = 0; ri < rowCount; ri++) {
+      html += `<tr><th>${rowLabels[ri]}</th>`;
+      for (let ci = 0; ci < colCount; ci++) {
+        const minterm = grid[ri][ci];
+        const output = rows[minterm]?.output;
+        let cellClass = "km-zero";
+        let cellValue = "0";
+        if (dontCares?.has(minterm)) {
+          cellClass = "km-dontcare";
+          cellValue = "X";
+        } else if (output === 1) {
+          cellClass = "km-one";
+          cellValue = "1";
+        } else if (output === -1) {
+          cellClass = "km-dontcare";
+          cellValue = "X";
+        }
+        html += `<td class="${cellClass}" data-row="${ri}" data-col="${ci}">
+                <span class="km-minterm">m${minterm}</span>
+                <span class="km-value">${cellValue}</span>
+            </td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table></div>`;
+    if (legendHTML) html += legendHTML;
+    html += `</div>`;
+    return html;
+  }
+
+  // Web1/src/kmap/overlays.ts
+  function contiguousRuns(indices) {
+    const sorted = [...new Set(indices)].sort((a, b) => a - b);
+    if (sorted.length === 0) return [];
+    const runs = [[sorted[0]]];
+    for (let i = 1; i < sorted.length; i++) {
+      if (sorted[i] === sorted[i - 1] + 1) {
+        runs[runs.length - 1].push(sorted[i]);
+      } else {
+        runs.push([sorted[i]]);
+      }
+    }
+    return runs;
+  }
+  function segmentsForImplicant(implicant, cellCoords) {
+    const minterms = new Set(patternToMinterms(implicant.pattern));
+    const rows = [];
+    const cols = [];
+    cellCoords.forEach((coord, minterm) => {
+      if (minterms.has(minterm)) {
+        rows.push(coord.r);
+        cols.push(coord.c);
+      }
+    });
+    if (rows.length === 0) return [];
+    const rowRuns = contiguousRuns(rows);
+    const colRuns = contiguousRuns(cols);
+    const segments = [];
+    for (const rr of rowRuns) {
+      for (const cr of colRuns) {
+        segments.push({
+          minRow: rr[0],
+          maxRow: rr[rr.length - 1],
+          minCol: cr[0],
+          maxCol: cr[cr.length - 1]
+        });
+      }
+    }
+    return segments;
+  }
+  function positionKarnaughOverlays(args) {
+    const { implicants, gridHost } = args;
+    if (!gridHost) return;
+    gridHost.querySelectorAll(".km-group-overlay").forEach((el2) => el2.remove());
+    const grid = gridHost.querySelector("#karnaughMapGrid");
+    const table = grid?.querySelector(".karnaugh-map");
+    if (!grid || !table || implicants.length === 0) return;
+    const cellCoords = /* @__PURE__ */ new Map();
+    table.querySelectorAll("td[data-row]").forEach((cell) => {
+      const r = parseInt(cell.getAttribute("data-row") ?? "-1", 10);
+      const c = parseInt(cell.getAttribute("data-col") ?? "-1", 10);
+      const m = parseInt((cell.querySelector(".km-minterm")?.textContent ?? "").replace("m", ""), 10);
+      if (!isNaN(r) && !isNaN(c) && !isNaN(m)) cellCoords.set(m, { r, c });
+    });
+    const gridRect = grid.getBoundingClientRect();
+    const padding = 4;
+    implicants.forEach((imp, i) => {
+      const colorClass = `km-group-${i % 5 + 1}`;
+      const borderColor = kmapBorderColor(i);
+      const segments = segmentsForImplicant(imp, cellCoords);
+      const memberMinterms = new Set(patternToMinterms(imp.pattern));
+      for (const seg of segments) {
+        let minLeft = Infinity, minTop = Infinity, maxRight = -Infinity, maxBottom = -Infinity;
+        let found = false;
+        cellCoords.forEach((coord, minterm) => {
+          if (!memberMinterms.has(minterm)) return;
+          if (coord.r < seg.minRow || coord.r > seg.maxRow) return;
+          if (coord.c < seg.minCol || coord.c > seg.maxCol) return;
+          const cell = table.querySelector(
+            `td[data-row="${coord.r}"][data-col="${coord.c}"]`
+          );
+          if (!cell) return;
+          const rect = cell.getBoundingClientRect();
+          minLeft = Math.min(minLeft, rect.left);
+          minTop = Math.min(minTop, rect.top);
+          maxRight = Math.max(maxRight, rect.right);
+          maxBottom = Math.max(maxBottom, rect.bottom);
+          found = true;
+        });
+        if (!found) continue;
+        const div = document.createElement("div");
+        div.className = `km-group-overlay ${colorClass}`;
+        div.style.display = "block";
+        div.style.left = `${minLeft - gridRect.left - padding}px`;
+        div.style.top = `${minTop - gridRect.top - padding}px`;
+        div.style.width = `${maxRight - minLeft + 2 * padding}px`;
+        div.style.height = `${maxBottom - minTop + 2 * padding}px`;
+        div.style.borderColor = borderColor;
+        grid.appendChild(div);
+      }
+    });
+  }
+
+  // Web1/src/ui/probe.ts
+  function setupProbePanels(variables, callbacks = {}) {
+    state.probeState = {};
+    variables.forEach((v) => {
+      state.probeState[v] = false;
+    });
+    ["probeSwitchesBasic", "probeSwitchesNand", "probeSwitchesNor"].forEach((panelId) => {
+      const panel = byId(panelId);
+      panel.innerHTML = variables.map((v) => {
+        const safe = escapeHtml(v);
+        return `
+            <div class="probe-switch" data-var="${safe}" role="button" tabindex="0" aria-label="Toggle ${safe}">
+                <span>${safe}</span>
                 <span class="probe-val-badge">0</span>
             </div>
-        `).join("");
-        panel.querySelectorAll(".probe-switch").forEach(btn => {
-            btn.addEventListener("click", () => {
-                const varName = btn.getAttribute("data-var");
-                if (varName) {
-                    currentProbeState[varName] = !currentProbeState[varName];
-                    if (window.StudioFX)
-                        window.StudioFX.click(currentProbeState[varName]);
-                    updateProbeUI();
-                    updateCircuitSignals();
-                }
-            });
+        `;
+      }).join("");
+      panel.querySelectorAll(".probe-switch").forEach((btn) => {
+        btn.addEventListener("click", () => {
+          const varName = btn.getAttribute("data-var");
+          if (varName) toggleProbe(varName, callbacks);
         });
+      });
     });
     updateProbeUI();
     updateCircuitSignals();
-}
-function updateProbeUI() {
-    document.querySelectorAll(".probe-switch").forEach(btn => {
-        const varName = btn.getAttribute("data-var");
-        if (varName && currentProbeState.hasOwnProperty(varName)) {
-            const isHigh = currentProbeState[varName];
-            btn.classList.toggle("active", isHigh);
-            const badge = btn.querySelector(".probe-val-badge");
-            if (badge)
-                badge.textContent = isHigh ? "1" : "0";
-        }
+  }
+  function toggleProbe(varName, callbacks = {}) {
+    if (!Object.prototype.hasOwnProperty.call(state.probeState, varName)) return;
+    state.probeState[varName] = !state.probeState[varName];
+    callbacks.onSound?.(state.probeState[varName]);
+    updateProbeUI();
+    updateCircuitSignals();
+  }
+  function updateProbeUI() {
+    document.querySelectorAll(".probe-switch").forEach((btn) => {
+      const varName = btn.getAttribute("data-var");
+      if (varName && Object.prototype.hasOwnProperty.call(state.probeState, varName)) {
+        const isHigh = state.probeState[varName];
+        btn.classList.toggle("active", isHigh);
+        const badge = btn.querySelector(".probe-val-badge");
+        if (badge) badge.textContent = isHigh ? "1" : "0";
+      }
     });
-    document.querySelectorAll(".pin-interactive").forEach(nodeEl => {
-        const varName = nodeEl.getAttribute("data-var");
-        if (varName && currentProbeState.hasOwnProperty(varName)) {
-            const isHigh = currentProbeState[varName];
-            const textEl = nodeEl.querySelector("text");
-            const rectEl = nodeEl.querySelector("rect");
-            if (textEl)
-                textEl.textContent = `${varName} = ${isHigh ? "1" : "0"}`;
-            if (rectEl) {
-                rectEl.setAttribute("stroke", isHigh ? "var(--wire-high)" : "var(--gate-stroke)");
-                rectEl.setAttribute("stroke-width", isHigh ? "2.5" : "2");
-            }
+    document.querySelectorAll(".pin-interactive").forEach((nodeEl) => {
+      const varName = nodeEl.getAttribute("data-var");
+      if (varName && Object.prototype.hasOwnProperty.call(state.probeState, varName)) {
+        const isHigh = state.probeState[varName];
+        const textEl = nodeEl.querySelector("text");
+        const rectEl = nodeEl.querySelector("rect");
+        if (textEl) textEl.textContent = `${varName} = ${isHigh ? "1" : "0"}`;
+        if (rectEl) {
+          rectEl.setAttribute("stroke", isHigh ? "var(--wire-high)" : "var(--gate-stroke)");
+          rectEl.setAttribute("stroke-width", isHigh ? "2.5" : "2");
         }
+      }
     });
-    if (currentVariables.length > 0) {
-        const rowIdx = currentVariables.reduce((acc, v, idx) => {
-            return acc | ((currentProbeState[v] ? 1 : 0) << (currentVariables.length - 1 - idx));
-        }, 0);
-        document.querySelectorAll("#generatedTruthTable tr").forEach((tr, i) => {
-            if (i > 0)
-                tr.classList.toggle("active-row", (i - 1) === rowIdx);
-        });
-        const vectorStr = currentVariables.map(v => `${v}=${currentProbeState[v] ? 1 : 0}`).join(", ");
-        if (hudVector)
-            hudVector.textContent = vectorStr;
+    if (state.variables.length > 0 && state.rows.length > 0) {
+      const rowIdx = state.variables.reduce((acc, v, idx) => {
+        return acc | (state.probeState[v] ? 1 : 0) << state.variables.length - 1 - idx;
+      }, 0);
+      document.querySelectorAll("#generatedTruthTable tr").forEach((tr, i) => {
+        if (i > 0) tr.classList.toggle("active-row", i - 1 === rowIdx);
+      });
+      const hudVector = byId("hudVector");
+      hudVector.textContent = state.variables.map((v) => `${v}=${state.probeState[v] ? 1 : 0}`).join(", ");
     }
-}
-function updateCircuitSignals() {
-    if (currentGraphBasic)
-        updateGraphWires(currentGraphBasic, "basicCircuit");
-    if (currentGraphNand)
-        updateGraphWires(currentGraphNand, "nandCircuit");
-    if (currentGraphNor)
-        updateGraphWires(currentGraphNor, "norCircuit");
-}
-function updateGraphWires(graph, containerId) {
+  }
+  function updateCircuitSignals() {
+    const pairs = [
+      [state.graphs.basic, "basicCircuit"],
+      [state.graphs.nand, "nandCircuit"],
+      [state.graphs.nor, "norCircuit"]
+    ];
+    for (const [graph, containerId] of pairs) {
+      if (!graph) continue;
+      updateGraphWires(graph, containerId);
+    }
+  }
+  function updateGraphWires(graph, containerId) {
     const container = document.getElementById(containerId);
-    if (!container)
-        return;
-    const values = evaluateAllNodeValues(graph, currentProbeState);
+    if (!container) return;
+    const values = evaluateAllNodeValues(graph, state.probeState);
     values.forEach((isHigh, nodeId) => {
-        container.querySelectorAll(`[data-source-id="${nodeId}"]`).forEach(el => {
-            if (el.tagName.toLowerCase() === "path") {
-                el.classList.toggle("wire-active", isHigh);
-                el.classList.toggle("wire-inactive", !isHigh);
-            }
-            else if (el.tagName.toLowerCase() === "circle") {
-                el.setAttribute("fill", isHigh ? "var(--wire-high)" : "var(--wire-low)");
-            }
-        });
+      container.querySelectorAll(`[data-source-id="${nodeId}"]`).forEach((el2) => {
+        if (el2.tagName.toLowerCase() === "path") {
+          el2.classList.toggle("wire-active", isHigh);
+          el2.classList.toggle("wire-inactive", !isHigh);
+        } else if (el2.tagName.toLowerCase() === "circle") {
+          el2.setAttribute("fill", isHigh ? "var(--wire-high)" : "var(--wire-low)");
+        }
+      });
     });
     const finalVal = values.get(graph.output);
-    if (finalVal !== undefined) {
-        const ind = container.querySelector(".output-indicator-text");
-        if (ind)
-            ind.textContent = `F = ${finalVal ? "1" : "0"}`;
-        if (containerId === "basicCircuit" && hudOutput) {
-            hudOutput.textContent = `${finalVal ? "1" : "0"} (${finalVal ? "5.0 V" : "0.0 V"})`;
-            hudOutput.style.color = finalVal ? "#10b981" : "var(--text-muted)";
-        }
+    if (finalVal !== void 0) {
+      const ind = container.querySelector(".output-indicator-text");
+      if (ind) ind.textContent = `F = ${finalVal ? "1" : "0"}`;
+      if (containerId === "basicCircuit") {
+        const hudOutput = byId("hudOutput");
+        hudOutput.textContent = `${finalVal ? "1" : "0"} (${finalVal ? "5.0 V" : "0.0 V"})`;
+        hudOutput.style.color = finalVal ? "#10b981" : "var(--text-muted)";
+      }
     }
-}
-/* =========================================================
-   CODE EXPORTS
-========================================================= */
-function generateVerilog(variables, simplifiedExpr) {
-    const vInputs = variables.join(", ");
-    let expr = simplifiedExpr
-        .replace(/([A-Za-z])'/g, "(~$1)")
-        .replace(/\+/g, " | ")
-        .replace(/\^/g, " ^ ")
-        .replace(/\s+/g, " ");
-    return `// Verilog HDL - Boolean Function Synthesis Module\nmodule bool_function (\n    input  wire ${vInputs},\n    output wire F\n);\n    assign F = ${expr};\nendmodule`;
-}
-function generateCodeFormat(variables, simplifiedExpr) {
-    const args = variables.map(v => `bool ${v}`).join(", ");
-    let expr = simplifiedExpr
-        .replace(/([A-Za-z])'/g, "(!$1)")
-        .replace(/\+/g, " || ")
-        .replace(/\^/g, " ^ ")
-        .replace(/\s+/g, " ");
-    return `// C / C++ / Java / Python Boolean Function\nbool evaluate_logic(${args}) {\n    return ${expr};\n}`;
-}
-function generateLatexFormat(simplifiedExpr) {
-    let expr = simplifiedExpr
-        .replace(/([A-Za-z])'/g, "\\overline{$1}")
-        .replace(/\+/g, " + ")
-        .replace(/\^/g, " \\oplus ");
-    return `$$F = ${expr}$$`;
-}
-function generateMarkdownTable(variables, rows) {
-    let md = "| " + variables.join(" | ") + " | F |\n";
-    md += "| " + variables.map(() => "---").join(" | ") + " | --- |\n";
-    rows.forEach(r => {
-        const outStr = r.output === 1 ? "1" : r.output === 0 ? "0" : "X";
-        md += "| " + r.inputs.join(" | ") + " | " + outStr + " |\n";
-    });
-    return md;
-}
-function copyToClipboard(text, btn) {
-    if (window.StudioFX)
-        window.StudioFX.click(true);
+  }
+
+  // Web1/src/ui/results.ts
+  function copyToClipboard(text, btn, onSound) {
+    onSound?.(true);
     navigator.clipboard.writeText(text).then(() => {
-        const prev = btn.textContent;
-        btn.textContent = "✅ Copied!";
-        btn.classList.add("copied");
-        setTimeout(() => {
-            btn.textContent = prev;
-            btn.classList.remove("copied");
-        }, 1600);
+      const prev = btn.textContent;
+      btn.textContent = "\u2705 Copied!";
+      btn.classList.add("copied");
+      setTimeout(() => {
+        btn.textContent = prev;
+        btn.classList.remove("copied");
+      }, 1600);
     });
-}
-function setupExportButtons(variables, simplifiedExpr, rows) {
-    const verilog = generateVerilog(variables, simplifiedExpr);
-    const code = generateCodeFormat(variables, simplifiedExpr);
-    const latex = generateLatexFormat(simplifiedExpr);
-    const mdTable = generateMarkdownTable(variables, rows);
-    const vPreview = document.getElementById("verilogPreview");
-    if (vPreview)
-        vPreview.textContent = verilog;
-    const cPreview = document.getElementById("codePreview");
-    if (cPreview)
-        cPreview.textContent = code;
-    const lPreview = document.getElementById("latexPreview");
-    if (lPreview)
-        lPreview.textContent = latex;
-    const copyV = document.getElementById("copyVerilogBtn");
-    if (copyV)
-        copyV.onclick = () => copyToClipboard(verilog, copyV);
-    const copyC = document.getElementById("copyCodeBtn");
-    if (copyC)
-        copyC.onclick = () => copyToClipboard(code, copyC);
-    const copyL = document.getElementById("copyLatexBtn");
-    if (copyL)
-        copyL.onclick = () => copyToClipboard(latex, copyL);
-    const copyMd = document.getElementById("copyMarkdownTableBtn");
-    if (copyMd)
-        copyMd.onclick = () => copyToClipboard(mdTable, copyMd);
-}
-/* =========================================================
-   TRUTH TABLE HTML GENERATION
-========================================================= */
-function createTruthTableHTML(variables, rows, dontCareIndices) {
+  }
+  function createTruthTableHTML(variables, rows, dontCareIndices) {
     let html = `<table class="truth-table"><thead><tr>`;
-    variables.forEach(v => { html += `<th>${v}</th>`; });
+    variables.forEach((v) => {
+      html += `<th>${escapeHtml(v)}</th>`;
+    });
     html += `<th>F</th></tr></thead><tbody>`;
     rows.forEach((row, index) => {
-        html += `<tr>`;
-        row.inputs.forEach(val => { html += `<td>${val}</td>`; });
-        let outCell;
-        if (dontCareIndices && dontCareIndices.has(index)) {
-            outCell = `<span class="tt-dontcare">X</span>`;
-        }
-        else if (row.output === 1) {
-            outCell = `<span class="tt-one">1</span>`;
-        }
-        else {
-            outCell = `<span class="tt-zero">0</span>`;
-        }
-        html += `<td>${outCell}</td></tr>`;
+      html += `<tr>`;
+      row.inputs.forEach((val) => {
+        html += `<td>${val}</td>`;
+      });
+      let outCell;
+      if (dontCareIndices?.has(index)) {
+        outCell = `<span class="tt-dontcare">X</span>`;
+      } else if (row.output === 1) {
+        outCell = `<span class="tt-one">1</span>`;
+      } else {
+        outCell = `<span class="tt-zero">0</span>`;
+      }
+      html += `<td>${outCell}</td></tr>`;
     });
     html += `</tbody></table>`;
     return html;
-}
-function generateTruthTableInput() {
-    const count = Number(truthVariables.value);
-    const variables = generateVariableNames(count);
-    const combinations = generateCombinations(count);
+  }
+  function generateMarkdownTable(variables, rows) {
+    let md = "| " + variables.join(" | ") + " | F |\n";
+    md += "| " + variables.map(() => "---").join(" | ") + " | --- |\n";
+    rows.forEach((r) => {
+      const outStr = r.output === 1 ? "1" : r.output === 0 ? "0" : "X";
+      md += "| " + r.inputs.join(" | ") + " | " + outStr + " |\n";
+    });
+    return md;
+  }
+  var errorTimeout = null;
+  function showError(message) {
+    if (errorTimeout) clearTimeout(errorTimeout);
+    const box = byId("errorMessage");
+    box.textContent = message;
+    box.classList.remove("hidden");
+    errorTimeout = setTimeout(() => box.classList.add("hidden"), 6e3);
+  }
+  function clearError() {
+    const box = byId("errorMessage");
+    box.textContent = "";
+    box.classList.add("hidden");
+  }
+  function setWordProblemStatus(message, isError = false) {
+    const statusEl = byId("wordProblemStatus");
+    statusEl.textContent = message;
+    statusEl.classList.remove("hidden");
+    statusEl.classList.toggle("status-error", isError);
+  }
+  function clearWordProblemStatus() {
+    const statusEl = byId("wordProblemStatus");
+    statusEl.textContent = "";
+    statusEl.classList.add("hidden");
+    statusEl.classList.remove("status-error");
+  }
+  function showWordProblemLegend(variables, descriptions) {
+    const legend = byId("wordProblemLegend");
+    if (!descriptions || Object.keys(descriptions).length === 0) {
+      legend.classList.add("hidden");
+      legend.replaceChildren();
+      return;
+    }
+    legend.replaceChildren();
+    variables.forEach((name, i) => {
+      if (i > 0) legend.appendChild(el("br"));
+      legend.appendChild(el("strong", void 0, name));
+      legend.appendChild(document.createTextNode(` = ${descriptions[name] ?? "(no description)"}`));
+    });
+    legend.classList.remove("hidden");
+  }
+  function renderVerification(passed, variableCount, onSound) {
+    const frag = document.createDocumentFragment();
+    if (passed) {
+      onSound?.();
+      const ok = el("div", "verification-success");
+      ok.appendChild(el("strong", void 0, "\u2705 All Implementations Verified Successfully"));
+      ok.appendChild(el("br"));
+      ok.appendChild(el("br"));
+      ok.appendChild(document.createTextNode(
+        `The original Boolean function, simplified expression, AND/OR/NOT circuit, NAND-only circuit, and NOR-only circuit produce 100% identical outputs for all ${2 ** variableCount} possible input combinations.`
+      ));
+      frag.appendChild(ok);
+    } else {
+      const bad = el("div", "verification-failure");
+      bad.appendChild(el("strong", void 0, "\u274C Verification Issue Detected"));
+      bad.appendChild(el("br"));
+      bad.appendChild(el("br"));
+      bad.appendChild(document.createTextNode(
+        "One or more circuit implementations does not match the expected Boolean truth table."
+      ));
+      frag.appendChild(bad);
+    }
+    return frag;
+  }
+  function clearResults() {
+    byId("results").classList.add("hidden");
+    maybeById("dontCareResults")?.classList.add("hidden");
+    const statusEl = maybeById("wordProblemStatus");
+    if (statusEl) {
+      statusEl.textContent = "";
+      statusEl.classList.add("hidden");
+      statusEl.classList.remove("status-error");
+    }
+    const legend = maybeById("wordProblemLegend");
+    if (legend) {
+      legend.textContent = "";
+      legend.classList.add("hidden");
+    }
+    byId("originalExpression").textContent = "";
+    byId("generatedTruthTable").innerHTML = "";
+    byId("canonicalSOP").textContent = "";
+    byId("canonicalPOS").textContent = "";
+    byId("simplifiedExpression").textContent = "";
+    byId("karnaughMap").innerHTML = "";
+    byId("basicCircuit").innerHTML = "";
+    byId("nandCircuit").innerHTML = "";
+    byId("norCircuit").innerHTML = "";
+    byId("verification").innerHTML = "";
+  }
+  function renderResults(model, callbacks = {}) {
+    state.variables = model.variables;
+    state.rows = model.rows;
+    byId("originalExpression").textContent = model.originalDisplay;
+    byId("generatedTruthTable").innerHTML = createTruthTableHTML(model.variables, model.rows, model.hasDontCares ? model.dontCares : void 0);
+    byId("canonicalSOP").textContent = model.canonicalSOP;
+    byId("canonicalPOS").textContent = model.canonicalPOS;
+    byId("simplifiedExpression").textContent = model.simplifiedDisplay;
+    byId("hudTermCount").textContent = `${model.sop.implicants.length} Implicants`;
+    if (model.simplifiedCoverTruncated) {
+      byId("simplifiedExpression").appendChild(
+        el("div", "help-text", "(very large function: greedy grouping used)")
+      );
+    }
+    byId("karnaughMap").innerHTML = generateKarnaughMap({
+      variables: model.variables,
+      rows: model.rows,
+      dontCares: model.hasDontCares ? model.dontCares : void 0,
+      implicants: model.sop.implicants
+    });
+    state.kmap = { implicants: model.sop.implicants, variables: model.variables };
+    requestAnimationFrame(() => positionKarnaughOverlays({
+      implicants: model.sop.implicants,
+      gridHost: byId("karnaughMap")
+    }));
+    const dontCareResults = maybeById("dontCareResults");
+    if (model.hasDontCares && dontCareResults) {
+      dontCareResults.classList.remove("hidden");
+      byId("dontCareSummary").replaceChildren(buildDontCareSummary(model));
+    } else if (dontCareResults) {
+      dontCareResults.classList.add("hidden");
+    }
+    setupExportButtons(model, callbacks);
+    resetCircuitIds();
+    state.graphs.basic = buildBasicSOPCircuit(model.sop.implicants, model.variables);
+    state.graphs.nand = buildNANDCircuit(model.sop.implicants, model.variables);
+    state.graphs.nor = buildNORCircuit(model.pos.implicants, model.variables);
+    const onPinToggle = (varName) => toggleProbe(varName, { onSound: callbacks.onClickSound });
+    renderCircuit(state.graphs.basic, byId("basicCircuit"), { onPinToggle });
+    renderCircuit(state.graphs.nand, byId("nandCircuit"), { onPinToggle });
+    renderCircuit(state.graphs.nor, byId("norCircuit"), { onPinToggle });
+    setupProbePanels(model.variables, { onSound: callbacks.onClickSound });
+    const verified = verifySolution(model, state.graphs);
+    byId("verification").replaceChildren(
+      renderVerification(verified, model.variables.length, callbacks.onSound)
+    );
+    const resultsSection = byId("results");
+    resultsSection.classList.remove("hidden");
+    resultsSection.scrollIntoView({ behavior: "smooth" });
+  }
+  function buildDontCareSummary(model) {
+    const frag = document.createDocumentFragment();
+    const wrap = el("div");
+    wrap.style.cssText = "font-size:14px;line-height:1.7;";
+    const line1 = el("div");
+    line1.appendChild(document.createTextNode("Minterms (F = 1): "));
+    line1.appendChild(el("strong", void 0, `{${[...model.ones].sort((a, b) => a - b).join(", ") || "none"}}`));
+    const line2 = el("div");
+    line2.appendChild(document.createTextNode("Don't Cares (F = X): "));
+    const dcSpan = el("span", void 0, `{${[...model.dontCares].sort((a, b) => a - b).join(", ") || "none"}}`);
+    dcSpan.style.cssText = "color:#f59e0b;font-weight:700;";
+    line2.appendChild(dcSpan);
+    const line3 = el("div");
+    line3.appendChild(document.createTextNode(
+      `Total terms used in minimization: ${model.ones.length + model.dontCares.size}`
+    ));
+    wrap.append(line1, line2, line3);
+    frag.appendChild(wrap);
+    return frag;
+  }
+  function setupExportButtons(model, callbacks) {
+    const verilog = generateVerilogModule(model.simplifiedAst, {
+      inputs: model.variables
+    });
+    const cCode = generateCFunction(model.simplifiedAst, {
+      parameters: model.variables
+    });
+    const latex = generateLatex(model.simplifiedAst);
+    const mdTable = generateMarkdownTable(model.variables, model.rows);
+    const previews = [
+      ["verilogPreview", verilog],
+      ["codePreview", cCode],
+      ["latexPreview", latex]
+    ];
+    previews.forEach(([id, content]) => {
+      const pre = maybeById(id);
+      if (pre) pre.textContent = content;
+    });
+    const buttons = [
+      ["copyVerilogBtn", verilog],
+      ["copyCodeBtn", cCode],
+      ["copyLatexBtn", latex],
+      ["copyMarkdownTableBtn", mdTable]
+    ];
+    buttons.forEach(([id, payload]) => {
+      const btn = maybeById(id);
+      if (btn) btn.onclick = () => copyToClipboard(payload, btn, callbacks.onClickSound);
+    });
+    document.querySelectorAll(".copy-btn").forEach((button) => {
+      button.onclick = () => {
+        const row = button.closest(".expression-row");
+        const box = row?.querySelector(".expression-box");
+        const text = box?.textContent?.trim();
+        if (text) copyToClipboard(text, button, callbacks.onClickSound);
+      };
+    });
+  }
+
+  // Web1/src/ui/truthTableInput.ts
+  function generateTruthTableInput(variableCount) {
+    const host = byId("userTruthTable");
+    const variables = generateVariableNames(variableCount);
+    const combinations = generateCombinations(variableCount);
     let html = `<table class="truth-table"><thead><tr>`;
-    variables.forEach(v => { html += `<th>${v}</th>`; });
+    variables.forEach((v) => {
+      html += `<th>${escapeHtml(v)}</th>`;
+    });
     html += `<th>Output (F)</th></tr></thead><tbody>`;
     combinations.forEach((inputs, index) => {
-        html += `<tr>`;
-        inputs.forEach(v => { html += `<td>${v}</td>`; });
-        html += `<td>
-            <select class="tt-input-select" data-row="${index}">
+      html += `<tr>`;
+      inputs.forEach((v) => {
+        html += `<td>${v}</td>`;
+      });
+      html += `<td>
+            <select class="tt-input-select" data-row="${index}" aria-label="Output for row ${index}">
                 <option value="0">0</option>
                 <option value="1">1</option>
                 <option value="X">X (Don't Care)</option>
@@ -1465,615 +2148,270 @@ function generateTruthTableInput() {
         </td></tr>`;
     });
     html += `</tbody></table>`;
-    userTruthTable.innerHTML = html;
-}
-function parseNumberList(value) {
-    if (!value.trim())
-        return [];
-    return value.split(",").map(v => Number(v.trim())).filter(v => !isNaN(v));
-}
-function getExpressionFromTruthTable() {
-    const count = Number(truthVariables.value);
-    const variables = generateVariableNames(count);
-    const combinations = generateCombinations(count);
-    const selects = userTruthTable.querySelectorAll(".tt-input-select");
-    const rows = [];
-    const minterms = [];
-    const dontCares = new Set();
-    selects.forEach((sel, i) => {
-        const val = sel.value;
-        if (val === "1") {
-            rows.push({ inputs: combinations[i], output: 1 });
-            minterms.push(i);
+    host.innerHTML = html;
+  }
+  function readTruthTableSelections() {
+    const host = byId("userTruthTable");
+    return Array.from(host.querySelectorAll(".tt-input-select")).map((sel) => sel.value);
+  }
+
+  // Web1/src/ui/controls.ts
+  var zoomStates = {
+    basicCircuit: freshZoom(),
+    nandCircuit: freshZoom(),
+    norCircuit: freshZoom()
+  };
+  function freshZoom() {
+    return { scale: 1, panX: 0, panY: 0, isDragging: false, startX: 0, startY: 0 };
+  }
+  function applyZoomPan(containerId) {
+    const container = document.getElementById(containerId);
+    const svg = container?.querySelector("svg");
+    if (!svg) return;
+    const s = zoomStates[containerId];
+    svg.style.transform = `translate(${s.panX}px, ${s.panY}px) scale(${s.scale})`;
+  }
+  function resetZoomPan(containerId) {
+    zoomStates[containerId] = freshZoom();
+    applyZoomPan(containerId);
+  }
+  function initZoomPanControls(onSound) {
+    document.querySelectorAll(".zoom-in-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-target");
+        if (target && zoomStates[target]) {
+          zoomStates[target].scale = Math.min(3, zoomStates[target].scale + 0.2);
+          applyZoomPan(target);
+          onSound?.(true);
         }
-        else if (val === "X") {
-            rows.push({ inputs: combinations[i], output: -1 });
-            dontCares.add(i);
-        }
-        else {
-            rows.push({ inputs: combinations[i], output: 0 });
-        }
+      });
     });
-    const expression = mintermsToExpression(minterms, count, dontCares.size > 0 ? dontCares : undefined);
-    return { variables, rows, expression, dontCares };
-}
-/* =========================================================
-   KARNAUGH MAP GENERATION & OVERLAYS
-========================================================= */
-function grayCode(n) {
-    const result = [];
-    const total = 1 << n;
-    for (let i = 0; i < total; i++) {
-        result.push(i ^ (i >> 1));
-    }
-    return result;
-}
-function patternToMinterms(pattern, variableCount) {
-    const dashes = [];
-    for (let i = 0; i < pattern.length; i++) {
-        if (pattern[i] === "-")
-            dashes.push(i);
-    }
-    const total = 1 << dashes.length;
-    const result = [];
-    for (let mask = 0; mask < total; mask++) {
-        let minterm = 0;
-        for (let i = 0; i < variableCount; i++) {
-            if (pattern[i] === "1") {
-                minterm |= 1 << (variableCount - 1 - i);
-            }
-            else if (pattern[i] === "-") {
-                const dashPos = dashes.indexOf(i);
-                if (dashPos !== -1 && (mask & (1 << dashPos))) {
-                    minterm |= 1 << (variableCount - 1 - i);
-                }
-            }
+    document.querySelectorAll(".zoom-out-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-target");
+        if (target && zoomStates[target]) {
+          zoomStates[target].scale = Math.max(0.4, zoomStates[target].scale - 0.2);
+          applyZoomPan(target);
+          onSound?.(false);
         }
-        result.push(minterm);
-    }
-    return result;
-}
-function generateKarnaughMap(variables, rows, dontCares, implicants) {
-    var _a;
-    const variableCount = variables.length;
-    if (variableCount < 2 || variableCount > 4) {
-        return `<div class="help-text" style="text-align:center;">Karnaugh maps are displayed for 2 to 4 variables.</div>`;
-    }
-    let colBits;
-    let rowBits;
-    if (variableCount === 2) {
-        rowBits = 1;
-        colBits = 1;
-    }
-    else if (variableCount === 3) {
-        rowBits = 1;
-        colBits = 2;
-    }
-    else {
-        rowBits = 2;
-        colBits = 2;
-    }
-    const colGray = grayCode(colBits);
-    const rowGray = grayCode(rowBits);
-    const grid = [];
-    for (let ri = 0; ri < rowGray.length; ri++) {
-        grid[ri] = [];
-        for (let ci = 0; ci < colGray.length; ci++) {
-            let minterm = 0;
-            for (let b = 0; b < rowBits; b++) {
-                if (rowGray[ri] & (1 << (rowBits - 1 - b))) {
-                    minterm |= 1 << (variableCount - 1 - b);
-                }
-            }
-            for (let b = 0; b < colBits; b++) {
-                if (colGray[ci] & (1 << (colBits - 1 - b))) {
-                    minterm |= 1 << (variableCount - 1 - rowBits - b);
-                }
-            }
-            grid[ri][ci] = minterm;
-        }
-    }
-    const rowLabels = rowGray.map(v => v.toString(2).padStart(rowBits, "0"));
-    const colLabels = colGray.map(v => v.toString(2).padStart(colBits, "0"));
-    const rowVarStr = variables.slice(0, rowBits).join("");
-    const colVarStr = variables.slice(rowBits).join("");
-    const groupColors = ["km-group-1", "km-group-2", "km-group-3", "km-group-4", "km-group-5"];
-    const borderColors = ["#ef4444", "#2563eb", "#16a34a", "#ea580c", "#9333ea"];
-    const legendHTML = (implicants && implicants.length > 0)
-        ? `<div class="karnaugh-map-legend">
-            ${implicants.map((imp, i) => {
-            const borderColor = borderColors[i % borderColors.length];
-            return `<span class="legend-item">
-                    <span class="legend-swatch" style="border-color:${borderColor};background:${borderColor}20"></span>
-                    ${patternToSOPTerm(imp.pattern, variables)}
-                </span>`;
-        }).join("")}
-        </div>`
-        : "";
-    let html = `<div class="karnaugh-map-wrapper">`;
-    html += `<div id="karnaughMapGrid" style="position:relative;display:inline-block;">`;
-    html += `<table class="karnaugh-map">`;
-    html += `<thead><tr><th style="font-size:14px;">${rowVarStr}\\${colVarStr}</th>`;
-    for (const label of colLabels) {
-        html += `<th>${label}</th>`;
-    }
-    html += `</tr></thead><tbody>`;
-    for (let ri = 0; ri < rowGray.length; ri++) {
-        html += `<tr><th>${rowLabels[ri]}</th>`;
-        for (let ci = 0; ci < colGray.length; ci++) {
-            const minterm = grid[ri][ci];
-            const output = (_a = rows[minterm]) === null || _a === void 0 ? void 0 : _a.output;
-            let cellClass = "km-zero";
-            let cellValue = "0";
-            if (output === 1) {
-                cellClass = "km-one";
-                cellValue = "1";
-            }
-            else if (output === -1) {
-                cellClass = "km-dontcare";
-                cellValue = "X";
-            }
-            html += `<td class="${cellClass}" data-row="${ri}" data-col="${ci}">
-                <span class="km-minterm">m${minterm}</span>
-                <span class="km-value">${cellValue}</span>
-            </td>`;
-        }
-        html += `</tr>`;
-    }
-    html += `</tbody></table>`;
-    if (implicants && implicants.length > 0) {
-        for (let i = 0; i < implicants.length; i++) {
-            html += `<div class="km-group-overlay ${groupColors[i % groupColors.length]}" id="kmOverlay${i}" style="display:none;"></div>`;
-        }
-    }
-    html += `</div>`;
-    if (legendHTML)
-        html += legendHTML;
-    html += `</div>`;
-    return html;
-}
-function positionKarnaughOverlays(implicants, variableCount) {
-    const grid = document.getElementById("karnaughMapGrid");
-    if (!grid)
-        return;
-    const table = grid.querySelector(".karnaugh-map");
-    if (!table)
-        return;
-    implicants.forEach((imp, i) => {
-        const overlay = document.getElementById(`kmOverlay${i}`);
-        if (!overlay)
-            return;
-        const minterms = patternToMinterms(imp.pattern, variableCount);
-        let minRow = Infinity, maxRow = -Infinity, minCol = Infinity, maxCol = -Infinity;
-        const cellData = table.querySelectorAll("td[data-row]");
-        cellData.forEach(cell => {
-            var _a;
-            const row = parseInt(cell.getAttribute("data-row") || "-1");
-            const col = parseInt(cell.getAttribute("data-col") || "-1");
-            const mintermText = ((_a = cell.querySelector(".km-minterm")) === null || _a === void 0 ? void 0 : _a.textContent) || "";
-            const m = parseInt(mintermText.replace("m", ""));
-            if (!isNaN(m) && minterms.includes(m)) {
-                if (row < minRow)
-                    minRow = row;
-                if (row > maxRow)
-                    maxRow = row;
-                if (col < minCol)
-                    minCol = col;
-                if (col > maxCol)
-                    maxCol = col;
-            }
-        });
-        if (minRow === Infinity)
-            return;
-        const firstCell = table.querySelector(`td[data-row="${minRow}"][data-col="${minCol}"]`);
-        const lastCell = table.querySelector(`td[data-row="${maxRow}"][data-col="${maxCol}"]`);
-        if (!firstCell || !lastCell)
-            return;
-        const gridRect = grid.getBoundingClientRect();
-        const firstRect = firstCell.getBoundingClientRect();
-        const lastRect = lastCell.getBoundingClientRect();
-        const padding = 4;
-        const left = firstRect.left - gridRect.left - padding;
-        const top = firstRect.top - gridRect.top - padding;
-        const width = lastRect.right - firstRect.left + 2 * padding;
-        const height = lastRect.bottom - firstRect.top + 2 * padding;
-        overlay.style.display = "block";
-        overlay.style.left = `${left}px`;
-        overlay.style.top = `${top}px`;
-        overlay.style.width = `${width}px`;
-        overlay.style.height = `${height}px`;
+      });
     });
-}
-/* =========================================================
-   VERIFICATION & ERRORS
-========================================================= */
-function verifyAllCircuits(originalExpression, simplifiedExpression, variables, rows, basicGraph, nandGraph, norGraph) {
-    const original = evaluateExpression(originalExpression, variables);
-    const simplified = evaluateExpression(simplifiedExpression, variables);
-    for (let i = 0; i < rows.length; i++) {
-        const row = rows[i];
-        const assignment = {};
-        variables.forEach((variable, variableIndex) => {
-            assignment[variable] = Boolean(row.inputs[variableIndex]);
-        });
-        if (row.output === -1)
-            continue;
-        const expected = Boolean(row.output);
-        const originalOutput = Boolean(original.rows[i].output);
-        const simplifiedOutput = Boolean(simplified.rows[i].output);
-        const basicOutput = Boolean(evaluateCircuit(basicGraph, assignment));
-        const nandOutput = Boolean(evaluateCircuit(nandGraph, assignment));
-        const norOutput = Boolean(evaluateCircuit(norGraph, assignment));
-        if (originalOutput !== expected ||
-            simplifiedOutput !== expected ||
-            basicOutput !== expected ||
-            nandOutput !== expected ||
-            norOutput !== expected) {
-            return false;
-        }
-    }
-    return true;
-}
-function renderVerification(passed, variableCount) {
-    if (passed) {
-        if (window.StudioFX)
-            window.StudioFX.success();
-        return `
-            <div class="verification-success">
-                <strong>✅ All Implementations Verified Successfully</strong>
-                <br><br>
-                The original Boolean function, simplified expression, AND/OR/NOT circuit, NAND-only circuit, and NOR-only circuit produce 100% identical outputs for all <strong>${2 ** variableCount}</strong> possible input combinations.
-            </div>
-        `;
-    }
-    return `
-        <div class="verification-failure">
-            <strong>❌ Verification Issue Detected</strong>
-            <br><br>
-            One or more circuit implementations does not match the expected Boolean truth table.
-        </div>
-    `;
-}
-let errorTimeout = null;
-function showError(message) {
-    if (errorTimeout)
-        clearTimeout(errorTimeout);
-    errorMessage.textContent = message;
-    errorMessage.classList.remove("hidden");
-    errorTimeout = setTimeout(() => {
-        errorMessage.classList.add("hidden");
-    }, 5000);
-}
-function clearError() {
-    errorMessage.textContent = "";
-    errorMessage.classList.add("hidden");
-}
-/* =========================================================
-   MAIN SOLVER EXECUTION
-========================================================= */
-solveButton.addEventListener("click", () => {
-    void solve();
-});
-/* =========================================================
-   WORD PROBLEM (AI) INPUT
-========================================================= */
-// Point this at your deployed FastAPI backend (bolean_backend.py).
-// Never call the Gemini API directly from the browser - the key
-// must stay server-side.
-const BOOLEAN_API_BASE = "https://digitalcircuits.onrender.com";
-function setWordProblemStatus(message, isError = false) {
-    wordProblemStatus.textContent = message;
-    wordProblemStatus.classList.remove("hidden");
-    wordProblemStatus.classList.toggle("status-error", isError);
-}
-function clearWordProblemStatus() {
-    wordProblemStatus.textContent = "";
-    wordProblemStatus.classList.add("hidden");
-    wordProblemStatus.classList.remove("status-error");
-}
-function showWordProblemLegend(variables, descriptions) {
-    if (!descriptions || Object.keys(descriptions).length === 0) {
-        wordProblemLegend.classList.add("hidden");
-        wordProblemLegend.innerHTML = "";
-        return;
-    }
-    const items = variables
-        .map(name => { var _a; return `<strong>${name}</strong> = ${(_a = descriptions[name]) !== null && _a !== void 0 ? _a : "(no description)"}`; })
-        .join("<br>");
-    wordProblemLegend.innerHTML = items;
-    wordProblemLegend.classList.remove("hidden");
-}
-async function fetchMintermsFromProblem(problemStatement) {
-    const response = await fetch(`${BOOLEAN_API_BASE}/api/solve-boolean`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ problem_statement: problemStatement })
+    document.querySelectorAll(".zoom-reset-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-target");
+        if (target) resetZoomPan(target);
+      });
     });
-    if (!response.ok) {
-        let detail = `Request failed (${response.status})`;
-        try {
-            const body = await response.json();
-            if (body && body.detail)
-                detail = body.detail;
+    ["basicCircuit", "nandCircuit", "norCircuit"].forEach((id) => {
+      const container = document.getElementById(id);
+      if (!container) return;
+      container.addEventListener("wheel", (e) => {
+        e.preventDefault();
+        const delta = e.deltaY < 0 ? 0.1 : -0.1;
+        zoomStates[id].scale = Math.min(3, Math.max(0.4, zoomStates[id].scale + delta));
+        applyZoomPan(id);
+      }, { passive: false });
+      container.addEventListener("mousedown", (e) => {
+        if (e.button !== 0) return;
+        zoomStates[id].isDragging = true;
+        zoomStates[id].startX = e.clientX - zoomStates[id].panX;
+        zoomStates[id].startY = e.clientY - zoomStates[id].panY;
+        container.style.cursor = "grabbing";
+      });
+      window.addEventListener("mousemove", (e) => {
+        if (!zoomStates[id].isDragging) return;
+        zoomStates[id].panX = e.clientX - zoomStates[id].startX;
+        zoomStates[id].panY = e.clientY - zoomStates[id].startY;
+        applyZoomPan(id);
+      });
+      window.addEventListener("mouseup", () => {
+        if (zoomStates[id]) {
+          zoomStates[id].isDragging = false;
+          container.style.cursor = "grab";
         }
-        catch (_a) {
-            // ignore - use default message
-        }
-        throw new Error(detail);
-    }
-    const data = await response.json();
-    return {
-        variables: Array.isArray(data.variables) ? data.variables : [],
-        minterms: Array.isArray(data.minterms) ? data.minterms : [],
-        dontCares: Array.isArray(data.dont_cares) ? data.dont_cares : [],
-        variableDescriptions: data.variable_descriptions
+      });
+    });
+  }
+  function updateNumericExamples() {
+    const mintermVariables = byId("mintermVariables");
+    const maxtermVariables = byId("maxtermVariables");
+    const minCount = Number(mintermVariables.value);
+    byId("mintermExample").innerHTML = `Valid minterms: <strong>0 to ${(1 << minCount) - 1}</strong> (e.g. 1, 3, 5)`;
+    const maxCount = Number(maxtermVariables.value);
+    byId("maxtermExample").innerHTML = `Valid maxterms: <strong>0 to ${(1 << maxCount) - 1}</strong> (e.g. 0, 2, 4)`;
+    updateDontCareExamples();
+  }
+  function updateDontCareExamples() {
+    const count = Number(byId("dontCareVariables").value);
+    byId("dontCareExample").innerHTML = `Valid terms: <strong>0 to ${(1 << count) - 1}</strong> (e.g. Minterms: 1,3,7 &nbsp; Don't Cares: 0,5)`;
+  }
+  function updateInputInterface() {
+    const type = byId("inputType").value;
+    const sections = {
+      expression: "expressionSection",
+      minterms: "mintermSection",
+      maxterms: "maxtermSection",
+      dontCare: "dontCareSection",
+      truthTable: "truthTableSection",
+      wordProblem: "wordProblemSection"
     };
-}
-// Same term-building logic as mintermsToExpression, but labels each bit with
-// the backend's actual variable name instead of always A, B, C... - so the
-// displayed expression matches the truth table headers for word problems
-// where Gemini preserved names like F, H, M, D from the original problem.
-function mintermsToExpressionWithNames(minterms, variables, dontCares) {
-    const variableCount = variables.length;
-    if (minterms.length === 0)
-        return "0";
-    if (minterms.length === 1 << variableCount)
-        return "1";
-    return minterms.map(m => {
-        let term = "";
-        for (let i = 0; i < variableCount; i++) {
-            const bit = (m >> (variableCount - 1 - i)) & 1;
-            term += bit ? variables[i] : `${variables[i]}'`;
-        }
-        return term;
-    }).join(" + ");
-}
-async function solve() {
-    clearError();
-    circuitCounter = 0;
-    if (window.StudioFX)
-        window.StudioFX.relay();
-    try {
-        let expression;
-        let variables;
-        let rows;
-        let dontCares = new Set();
-        let hasDontCares = false;
-        if (inputType.value === "wordProblem") {
-            const problemStatement = problemStatementInput.value.trim();
-            if (!problemStatement)
-                throw new Error("Please describe the boolean logic problem.");
-            clearWordProblemStatus();
-            wordProblemLegend.classList.add("hidden");
-            setWordProblemStatus("Asking the AI backend to work out the minterms...");
-            solveButton.disabled = true;
-            let parsed;
-            try {
-                parsed = await fetchMintermsFromProblem(problemStatement);
-            }
-            catch (fetchError) {
-                const message = fetchError instanceof Error ? fetchError.message : String(fetchError);
-                setWordProblemStatus(`Couldn't solve that problem: ${message}`, true);
-                throw new Error("AI conversion failed - see message above.");
-            }
-            finally {
-                solveButton.disabled = false;
-            }
-            if (parsed.variables.length === 0)
-                throw new Error("The AI backend couldn't identify any variables in that problem.");
-            variables = parsed.variables;
-            dontCares = new Set(parsed.dontCares);
-            hasDontCares = dontCares.size > 0;
-            expression = mintermsToExpressionWithNames(parsed.minterms, variables, dontCares);
-            const combinations = generateCombinations(variables.length);
-            rows = combinations.map((inputs, index) => {
-                let output;
-                if (parsed.minterms.includes(index))
-                    output = 1;
-                else if (dontCares.has(index))
-                    output = -1;
-                else
-                    output = 0;
-                return { inputs, output };
-            });
-            clearWordProblemStatus();
-            showWordProblemLegend(variables, parsed.variableDescriptions);
-        }
-        else if (inputType.value === "expression") {
-            expression = expressionInput.value.trim();
-            if (!expression)
-                throw new Error("Please enter a Boolean expression.");
-            variables = getVariables(expression);
-            if (variables.length === 0)
-                throw new Error("No Boolean variables were found.");
-            rows = evaluateExpression(expression, variables).rows;
-        }
-        else if (inputType.value === "minterms") {
-            const count = Number(mintermVariables.value);
-            const minterms = parseNumberList(mintermsInput.value);
-            expression = mintermsToExpression(minterms, count);
-            variables = generateVariableNames(count);
-            rows = evaluateExpression(expression, variables).rows;
-        }
-        else if (inputType.value === "maxterms") {
-            const count = Number(maxtermVariables.value);
-            const maxterms = parseNumberList(maxtermsInput.value);
-            expression = maxtermsToExpression(maxterms, count);
-            variables = generateVariableNames(count);
-            rows = evaluateExpression(expression, variables).rows;
-        }
-        else if (inputType.value === "dontCare") {
-            const count = Number(dontCareVariables.value);
-            variables = generateVariableNames(count);
-            const mintermList = dontCareMintermsInput.value.trim()
-                ? parseNumberList(dontCareMintermsInput.value)
-                : [];
-            const dontCareList = dontCaresInput.value.trim()
-                ? parseNumberList(dontCaresInput.value)
-                : [];
-            if (mintermList.length === 0 && dontCareList.length === 0) {
-                throw new Error("Please enter at least minterms or don't care terms.");
-            }
-            const overlap = mintermList.filter(m => dontCareList.includes(m));
-            if (overlap.length > 0) {
-                throw new Error(`Terms ${overlap.join(", ")} appear in both minterms and don't cares.`);
-            }
-            dontCares = new Set(dontCareList);
-            hasDontCares = dontCares.size > 0;
-            expression = mintermsToExpression(mintermList, count, dontCares);
-            const combinations = generateCombinations(count);
-            rows = combinations.map((inputs, index) => {
-                let output;
-                if (mintermList.includes(index))
-                    output = 1;
-                else if (dontCares.has(index))
-                    output = -1;
-                else
-                    output = 0;
-                return { inputs, output };
-            });
-        }
-        else {
-            const result = getExpressionFromTruthTable();
-            expression = result.expression;
-            variables = result.variables;
-            rows = result.rows;
-            dontCares = result.dontCares;
-            hasDontCares = dontCares.size > 0;
-        }
-        currentVariables = variables;
-        currentRows = rows;
-        document.getElementById("originalExpression").textContent = expression;
-        document.getElementById("generatedTruthTable").innerHTML = createTruthTableHTML(variables, rows, hasDontCares ? dontCares : undefined);
-        document.getElementById("canonicalSOP").textContent = generateCanonicalSOP(rows, variables, hasDontCares ? dontCares : undefined);
-        document.getElementById("canonicalPOS").textContent = generateCanonicalPOS(rows, variables, hasDontCares ? dontCares : undefined);
-        const ones = [];
-        const zeros = [];
-        rows.forEach((row, index) => {
-            if (row.output === 1)
-                ones.push(index);
-            else if (row.output === 0)
-                zeros.push(index);
-        });
-        const simplifiedSOP = minimizeSOP(ones, variables, hasDontCares ? dontCares : undefined);
-        const simplifiedPOS = minimizePOS(zeros, variables, hasDontCares ? dontCares : undefined);
-        document.getElementById("simplifiedExpression").textContent = simplifiedSOP.expression;
-        if (hudTermCount)
-            hudTermCount.textContent = `${simplifiedSOP.implicants.length} Implicants`;
-        document.getElementById("karnaughMap").innerHTML = generateKarnaughMap(variables, rows, hasDontCares ? dontCares : undefined, simplifiedSOP.implicants);
-        requestAnimationFrame(() => {
-            positionKarnaughOverlays(simplifiedSOP.implicants, variables.length);
-        });
-        if (hasDontCares) {
-            const dontCareResults = document.getElementById("dontCareResults");
-            const dontCareSummary = document.getElementById("dontCareSummary");
-            if (dontCareResults && dontCareSummary) {
-                dontCareResults.classList.remove("hidden");
-                const mintermIndices = ones.sort((a, b) => a - b).join(", ") || "none";
-                const dcIndices = [...dontCares].sort((a, b) => a - b).join(", ") || "none";
-                const totalTerms = ones.length + dontCares.size;
-                dontCareSummary.innerHTML = `
-                    <div style="font-size:14px;line-height:1.7;">
-                        <div><strong>Minterms (F = 1):</strong> {${mintermIndices}}</div>
-                        <div><strong>Don't Cares (F = X):</strong> <span style="color:#f59e0b;font-weight:700;">{${dcIndices}}</span></div>
-                        <div><strong>Total terms used in minimization:</strong> ${totalTerms}</div>
-                    </div>
-                `;
-            }
-        }
-        setupExportButtons(variables, simplifiedSOP.expression, rows);
-        currentGraphBasic = buildBasicSOPCircuit(simplifiedSOP.implicants, variables);
-        currentGraphNand = buildNANDCircuit(simplifiedSOP.implicants, variables);
-        currentGraphNor = buildNORCircuit(simplifiedPOS.implicants, variables);
-        renderCircuit(currentGraphBasic, document.getElementById("basicCircuit"), "AND / OR / NOT Circuit");
-        renderCircuit(currentGraphNand, document.getElementById("nandCircuit"), "NAND-Only Circuit");
-        renderCircuit(currentGraphNor, document.getElementById("norCircuit"), "NOR-Only Circuit");
-        setupProbePanels(variables);
-        const verified = verifyAllCircuits(expression, simplifiedSOP.expression, variables, rows, currentGraphBasic, currentGraphNand, currentGraphNor);
-        document.getElementById("verification").innerHTML = renderVerification(verified, variables.length);
-        results.classList.remove("hidden");
-        results.scrollIntoView({ behavior: "smooth" });
-    }
-    catch (error) {
-        console.error(error);
-        if (error instanceof Error)
-            showError(error.message);
-        else
-            showError(String(error));
-    }
-}
-/* =========================================================
-   TRY EXAMPLE PRESETS
-========================================================= */
-const examplePresets = [
-    { expression: "A'B + BC", description: "3-variable SOP" },
-    { expression: "AB + A'C", description: "3-variable multiplex" },
-    { expression: "(A+B)(A'+C)", description: "3-variable POS" },
-    { expression: "ABC + A'B'C'", description: "Minterms 0 and 7" },
-    { expression: "AB + AC + BC", description: "Majority function" },
-    { expression: "A^B", description: "XOR 2-var" },
-    { expression: "A'B'C + A'BC' + AB'C' + ABC", description: "Full Adder Sum" }
-];
-let exampleIndex = 0;
-const tryExampleBtn = document.getElementById("tryExampleBtn");
-if (tryExampleBtn) {
-    tryExampleBtn.addEventListener("click", () => {
-        if (window.StudioFX)
-            window.StudioFX.click(true);
-        inputType.value = "expression";
-        updateInputInterface();
-        clearResults();
-        const preset = examplePresets[exampleIndex % examplePresets.length];
-        expressionInput.value = preset.expression;
-        expressionInput.focus();
-        tryExampleBtn.textContent = preset.description;
-        exampleIndex++;
+    Object.entries(sections).forEach(([mode, id]) => {
+      document.getElementById(id)?.classList.toggle("hidden", mode !== type);
     });
-}
-/* =========================================================
-   WORD PROBLEM EXAMPLE PRESETS
-========================================================= */
-const wordProblemExamplePresets = [
+    clearResults();
+  }
+  var EXAMPLE_PRESETS = [
+    { expression: "A'B + B\xB7C", description: "3-variable SOP" },
+    { expression: "A\xB7B + A'C", description: "3-variable multiplex" },
+    { expression: "(A+B)(A'+C)", description: "3-variable POS" },
+    { expression: "A\xB7B\xB7C + A'B'C'", description: "Minterms 0 and 7" },
+    { expression: "A\xB7B + A\xB7C + B\xB7C", description: "Majority function" },
+    { expression: "A^B", description: "XOR 2-var" },
+    { expression: "A'B'C + A'BC' + AB'C' + A\xB7B\xB7C", description: "Full Adder Sum" }
+  ];
+  var WORD_PROBLEM_PRESETS = [
     { problem: "A laboratory door opens when the identity card and PIN are both valid, or when emergency mode is active and either the PIN is correct or faculty authorization is present.", description: "Lab door access" },
     { problem: "A warning light turns on when the engine is overheating, or when the oil pressure is low and the ignition is on.", description: "Engine warning light" },
     { problem: "A student passes the course if they attend at least 75% of the classes and pass the final exam, or if they have special approval from the dean.", description: "Course pass condition" },
     { problem: "A smart irrigation system waters the garden if the soil is dry and it is not raining, or if the manual override switch is turned on.", description: "Smart irrigation" },
     { problem: "An alarm sounds if a window is open and the security system is armed, or if the smoke detector is triggered regardless of the armed state.", description: "Home alarm system" }
-];
-let wordProblemExampleIndex = 0;
-const tryWordProblemExampleBtn = document.getElementById("tryWordProblemExampleBtn");
-if (tryWordProblemExampleBtn) {
-    tryWordProblemExampleBtn.addEventListener("click", () => {
-        if (window.StudioFX)
-            window.StudioFX.click(true);
-        const preset = wordProblemExamplePresets[wordProblemExampleIndex % wordProblemExamplePresets.length];
-        problemStatementInput.value = preset.problem;
-        problemStatementInput.focus();
-        tryWordProblemExampleBtn.textContent = preset.description;
-        wordProblemExampleIndex++;
+  ];
+  var exampleIndex = 0;
+  var wordProblemExampleIndex = 0;
+  function initInputControls(onSound) {
+    const inputType = byId("inputType");
+    const mintermVariables = byId("mintermVariables");
+    const maxtermVariables = byId("maxtermVariables");
+    const dontCareVariables = byId("dontCareVariables");
+    const truthVariables = byId("truthVariables");
+    const expressionInput = byId("expression");
+    const problemStatementInput = byId("problemStatement");
+    inputType.addEventListener("change", () => {
+      updateInputInterface();
+      onSound?.(true);
     });
-}
-/* =========================================================
-   COPY BUTTONS
-========================================================= */
-document.querySelectorAll(".copy-btn").forEach(button => {
-    button.addEventListener("click", () => {
-        var _a;
-        const expressionRow = button.closest(".expression-row");
-        if (!expressionRow)
-            return;
-        const box = expressionRow.querySelector(".expression-box");
-        if (!box)
-            return;
-        const text = (_a = box.textContent) === null || _a === void 0 ? void 0 : _a.trim();
-        if (!text)
-            return;
-        copyToClipboard(text, button);
+    mintermVariables.addEventListener("change", updateNumericExamples);
+    maxtermVariables.addEventListener("change", updateNumericExamples);
+    dontCareVariables.addEventListener("change", updateDontCareExamples);
+    truthVariables.addEventListener("change", () => generateTruthTableInput(Number(truthVariables.value)));
+    const tryExampleBtn = byId("tryExampleBtn");
+    tryExampleBtn.addEventListener("click", () => {
+      onSound?.(true);
+      inputType.value = "expression";
+      updateInputInterface();
+      const preset = EXAMPLE_PRESETS[exampleIndex % EXAMPLE_PRESETS.length];
+      expressionInput.value = preset.expression;
+      expressionInput.focus();
+      tryExampleBtn.textContent = preset.description;
+      exampleIndex++;
     });
-});
-/* =========================================================
-   INITIALIZATION
-========================================================= */
-updateNumericExamples();
-generateTruthTableInput();
-initZoomPanControls();
+    const tryWordBtn = byId("tryWordProblemExampleBtn");
+    tryWordBtn.addEventListener("click", () => {
+      onSound?.(true);
+      const preset = WORD_PROBLEM_PRESETS[wordProblemExampleIndex % WORD_PROBLEM_PRESETS.length];
+      problemStatementInput.value = preset.problem;
+      problemStatementInput.focus();
+      tryWordBtn.textContent = preset.description;
+      wordProblemExampleIndex++;
+    });
+  }
+
+  // Web1/src/main.ts
+  function sound(isHigh) {
+    if (window.StudioFX) window.StudioFX.click(isHigh);
+  }
+  function collectRawInputs() {
+    const mode = byId("inputType").value;
+    switch (mode) {
+      case "expression":
+        return { mode, expression: byId("expression").value };
+      case "minterms":
+        return {
+          mode,
+          mintermCount: Number(byId("mintermVariables").value),
+          mintermList: parseNumberList(byId("minterms").value)
+        };
+      case "maxterms":
+        return {
+          mode,
+          maxtermCount: Number(byId("maxtermVariables").value),
+          maxtermList: parseNumberList(byId("maxterms").value)
+        };
+      case "dontCare":
+        return {
+          mode,
+          dontCareCount: Number(byId("dontCareVariables").value),
+          dontCareMintermList: parseNumberList(byId("dontCareMinterms").value),
+          dontCareList: parseNumberList(byId("dontCares").value)
+        };
+      case "truthTable":
+        return { mode, truthSelections: readTruthTableSelections() };
+      case "wordProblem":
+        return { mode };
+    }
+  }
+  var activeAiRequest = null;
+  async function runWordProblem() {
+    const statement = byId("problemStatement").value.trim();
+    if (!statement) throw new SolverInputError("Please describe the boolean logic problem.");
+    activeAiRequest?.abort();
+    const controller = new AbortController();
+    activeAiRequest = controller;
+    clearWordProblemStatus();
+    setWordProblemStatus("Asking the AI backend to work out the minterms...");
+    byId("solveButton").disabled = true;
+    try {
+      const parsed = await fetchMintermsFromProblem(statement, { signal: controller.signal });
+      showWordProblemLegend(parsed.variables, parsed.variableDescriptions);
+      return {
+        variables: parsed.variables,
+        minterms: parsed.minterms,
+        dontCares: parsed.dontCares
+      };
+    } catch (err) {
+      if (controller.signal.aborted && !activeAiRequest?.signal.aborted) {
+        throw new SolverInputError("__superseded__");
+      }
+      if (err instanceof Error && err.name === "AbortError") {
+        setWordProblemStatus("Request cancelled.", true);
+        throw new SolverInputError("__cancelled__");
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      setWordProblemStatus(`Couldn't solve that problem: ${message}`, true);
+      throw new SolverInputError(
+        "AI conversion failed - see the message above the results for details."
+      );
+    } finally {
+      if (activeAiRequest === controller) activeAiRequest = null;
+      byId("solveButton").disabled = false;
+    }
+  }
+  async function solve() {
+    clearError();
+    try {
+      let raw = collectRawInputs();
+      if (raw.mode === "wordProblem") {
+        const wp = await runWordProblem();
+        if (!wp) return;
+        raw = { ...raw, wordProblem: wp };
+      }
+      const model = buildSolverModel(raw);
+      renderResults(model, { onSound: () => window.StudioFX?.success(), onClickSound: sound });
+    } catch (error) {
+      if (error instanceof Error && /__(superseded|cancelled)__/.test(error.message)) return;
+      console.error(error);
+      const errMsg = error instanceof SolverInputError || error instanceof Error ? error.message : String(error);
+      showError(errMsg);
+    }
+  }
+  function init() {
+    initInputControls(sound);
+    updateNumericExamples();
+    generateTruthTableInput(Number(byId("truthVariables").value));
+    initZoomPanControls(sound);
+    byId("solveButton").addEventListener("click", () => {
+      void solve();
+    });
+  }
+  init();
+})();
