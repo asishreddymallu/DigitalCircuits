@@ -3,6 +3,7 @@ venv/
 .venv/
 __pycache__/
 *.pyc
+.pytest_cache/
 .env
 .env.*
 !.env.example
@@ -17,3 +18,11 @@ Thumbs.db
 
 # --- Logs ---
 *.log
+
+# --- Legacy per-app configs (build uses root package.json) ---
+Web1/package.json
+Web1/package-lock.json
+Web2/package.json
+Web2/package-lock.json
+Web3/package.json
+Web3/package-lock.json
