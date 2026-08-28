@@ -30,7 +30,7 @@ import { clauseToString, termToString } from "../../shared/ts/boolean/formatter"
 import { LIMITS } from "../../shared/ts/boolean/limits";
 import { evaluateCircuit, CircuitGraph } from "./circuits/circuitGraph";
 
-export type InputMode = "expression" | "minterms" | "maxterms" | "dontCare" | "truthTable" | "wordProblem";
+export type InputMode = "expression" | "minterms" | "maxterms" | "dontCare" | "truthTable" | "wordProblem" | "circuitImage";
 export type TruthSelection = "0" | "1" | "X";
 
 export interface RawInputs {
@@ -47,6 +47,8 @@ export interface RawInputs {
     truthSelections?: TruthSelection[];
     /** Pre-validated result of the AI word-problem path. */
     wordProblem?: { variables: string[]; minterms: number[]; dontCares: number[] };
+    /** Pre-validated result of the AI circuit image path. */
+    circuitImage?: { variables: string[]; minterms: number[]; dontCares: number[]; expression?: string };
 }
 
 export interface SolverModel {
@@ -148,6 +150,7 @@ export function buildSolverModel(raw: RawInputs): SolverModel {
         case "dontCare": return fromDontCare(raw.dontCareCount!, raw.dontCareMintermList ?? [], raw.dontCareList ?? []);
         case "truthTable": return fromTruthSelections(raw.truthSelections ?? []);
         case "wordProblem": return fromWordProblem(raw.wordProblem!);
+        case "circuitImage": return fromCircuitImage(raw.circuitImage!);
     }
 }
 
@@ -332,6 +335,49 @@ function fromTruthSelections(selections: TruthSelection[]): SolverModel {
         astFromMinterms(minterms, variables),
         mintermExpansionDisplay(minterms, count),
         rows,
+        dontCares
+    );
+}
+
+function fromCircuitImage(ci: { variables: string[]; minterms: number[]; dontCares: number[]; expression?: string }): SolverModel {
+    if (ci.variables.length === 0) {
+        throw new SolverInputError("The AI backend couldn't identify any variables in the circuit image.");
+    }
+    assertVarLimit(ci.variables.length);
+
+    const dontCares = new Set(ci.dontCares.filter(d => !ci.minterms.includes(d)));
+    const sorted = [...new Set(ci.minterms)].sort((a, b) => a - b);
+    validateIndices(sorted, ci.variables.length, "Minterm");
+
+    // If an expression was provided, try to use it for display
+    const display = ci.expression || (sorted.length === 0 ? "0"
+        : sorted.length === (1 << ci.variables.length) ? "1"
+            : sorted.map(m => termToString(toPattern(m, ci.variables.length), ci.variables)).join(" + "));
+
+    // Try to parse the expression if available
+    let originalAst: AstNode;
+    let originalDisplay: string;
+    if (ci.expression) {
+        try {
+            const parsed = parseExpression(ci.expression);
+            originalAst = parsed.ast;
+            originalDisplay = ci.expression;
+        } catch {
+            // Fall back to minterm-based AST
+            originalAst = astFromMinterms(sorted, ci.variables);
+            originalDisplay = display;
+        }
+    } else {
+        originalAst = astFromMinterms(sorted, ci.variables);
+        originalDisplay = display;
+    }
+
+    return finish(
+        "circuitImage",
+        ci.variables,
+        originalAst,
+        originalDisplay,
+        rowsFromMinterms(ci.variables.length, sorted, dontCares),
         dontCares
     );
 }

@@ -15,8 +15,12 @@ import {
     RawInputs,
     parseNumberList
 } from "./solverCore";
-import { fetchMintermsFromProblem } from "./ai/booleanApi";
+import { fetchMintermsFromProblem, analyzeCircuitImage, preprocessImage } from "./ai/booleanApi";
+import { web1ToCircuitFile, storeImportedCircuit } from "../../shared/ts/circuit/interop";
+import { state } from "./state";
+import type { CircuitGraph } from "./circuits/circuitGraph";
 import { initInputControls, updateNumericExamples, initZoomPanControls } from "./ui/controls";
+import { setupWaveformControls } from "./ui/waveform";
 import { generateTruthTableInput, readTruthTableSelections } from "./ui/truthTableInput";
 import {
     renderResults,
@@ -60,6 +64,8 @@ function collectRawInputs(): RawInputs {
         case "truthTable":
             return { mode, truthSelections: readTruthTableSelections() };
         case "wordProblem":
+            return { mode };
+        case "circuitImage":
             return { mode };
     }
 }
@@ -118,6 +124,12 @@ async function solve(): Promise<void> {
             raw = { ...raw, wordProblem: wp };
         }
 
+        if (raw.mode === "circuitImage") {
+            const ci = await runCircuitImage();
+            if (!ci) return; // superseded or cancelled
+            raw = { ...raw, circuitImage: ci };
+        }
+
         const model = buildSolverModel(raw);
         renderResults(model, { onSound: () => window.StudioFX?.success(), onClickSound: sound });
 
@@ -131,8 +143,142 @@ async function solve(): Promise<void> {
     }
 }
 
+let circuitImageDataUrl: string | null = null;
+
+async function runCircuitImage(): Promise<RawInputs["circuitImage"]> {
+    if (!circuitImageDataUrl) throw new SolverInputError("Please upload a circuit image first.");
+
+    activeAiRequest?.abort();
+    const controller = new AbortController();
+    activeAiRequest = controller;
+
+    const statusEl = byId<HTMLElement>("circuitImageStatus");
+    statusEl.textContent = "Analyzing circuit image...";
+    statusEl.className = "help-text circuit-image-status status-loading";
+    statusEl.classList.remove("hidden");
+    byId<HTMLButtonElement>("solveButton").disabled = true;
+
+    try {
+        const result = await analyzeCircuitImage(circuitImageDataUrl, { signal: controller.signal });
+
+        if (!result.variables || result.variables.length === 0) {
+            statusEl.textContent = "The circuit image could not be interpreted confidently. Please try a clearer image.";
+            statusEl.className = "help-text circuit-image-status status-error";
+            throw new SolverInputError("Could not interpret the circuit image.");
+        }
+
+        if (result.confidence !== undefined && result.confidence < 0.5) {
+            statusEl.textContent = `Low confidence (${Math.round(result.confidence * 100)}%). Results may be inaccurate.`;
+            statusEl.className = "help-text circuit-image-status status-loading";
+        } else {
+            statusEl.textContent = "Circuit analysis complete!";
+            statusEl.className = "help-text circuit-image-status status-success";
+        }
+
+        return {
+            variables: result.variables,
+            minterms: result.minterms,
+            dontCares: result.dontCares,
+            expression: result.expression,
+        };
+    } catch (err) {
+        if (controller.signal.aborted && !activeAiRequest?.signal.aborted) {
+            throw new SolverInputError("__superseded__");
+        }
+        if (err instanceof Error && err.name === "AbortError") {
+            statusEl.textContent = "Request cancelled.";
+            statusEl.className = "help-text circuit-image-status status-error";
+            throw new SolverInputError("__cancelled__");
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        statusEl.textContent = `Analysis failed: ${message}`;
+        statusEl.className = "help-text circuit-image-status status-error";
+        throw new SolverInputError("Circuit image analysis failed.");
+    } finally {
+        if (activeAiRequest === controller) activeAiRequest = null;
+        byId<HTMLButtonElement>("solveButton").disabled = false;
+    }
+}
+
+function initCircuitImageUpload(): void {
+    const dropZone = byId<HTMLDivElement>("circuitImageDropZone");
+    const fileInput = byId<HTMLInputElement>("circuitImageInput");
+    const placeholder = byId<HTMLDivElement>("circuitImagePlaceholder");
+    const preview = byId<HTMLDivElement>("circuitImagePreview");
+    const img = byId<HTMLImageElement>("circuitImageImg");
+    const status = byId<HTMLElement>("circuitImageStatus");
+    const replaceBtn = byId<HTMLButtonElement>("circuitImageReplaceBtn");
+    const removeBtn = byId<HTMLButtonElement>("circuitImageRemoveBtn");
+
+    async function handleFile(file: File) {
+        if (!file.type.match(/^image\/(png|jpeg|webp)$/)) {
+            status.textContent = "Unsupported format. Please use PNG, JPEG, or WebP.";
+            status.className = "help-text circuit-image-status status-error";
+            status.classList.remove("hidden");
+            return;
+        }
+
+        try {
+            status.textContent = "Processing image...";
+            status.className = "help-text circuit-image-status status-loading";
+            status.classList.remove("hidden");
+
+            circuitImageDataUrl = await preprocessImage(file);
+            img.src = circuitImageDataUrl;
+            placeholder.classList.add("hidden");
+            preview.classList.remove("hidden");
+            status.textContent = "Image ready. Click Solve to analyze.";
+            status.className = "help-text circuit-image-status status-success";
+        } catch (e) {
+            status.textContent = "Failed to process image.";
+            status.className = "help-text circuit-image-status status-error";
+            circuitImageDataUrl = null;
+        }
+    }
+
+    dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag-over");
+        const file = e.dataTransfer?.files[0];
+        if (file) handleFile(file);
+    });
+
+    fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (file) handleFile(file);
+    });
+
+    replaceBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        fileInput.click();
+    });
+
+    removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        circuitImageDataUrl = null;
+        img.src = "";
+        placeholder.classList.remove("hidden");
+        preview.classList.add("hidden");
+        fileInput.value = "";
+        status.classList.add("hidden");
+    });
+
+    // Click on drop zone to open file picker
+    dropZone.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest(".circuit-image-actions")) return;
+        fileInput.click();
+    });
+}
+
 function init(): void {
     initInputControls(sound);
+    initCircuitImageUpload();
+    setupWaveformControls();
     updateNumericExamples();
     generateTruthTableInput(Number(byId<HTMLSelectElement>("truthVariables").value));
     initZoomPanControls(sound);
@@ -140,6 +286,33 @@ function init(): void {
     byId<HTMLButtonElement>("solveButton").addEventListener("click", () => {
         void solve();
     });
+
+    // Open in Circuit Playground buttons (Basic / NAND / NOR)
+    const playgroundButtons: Array<[string, () => CircuitGraph | null]> = [
+        ["openBasicBtn", () => state.graphs.basic],
+        ["openNandBtn", () => state.graphs.nand],
+        ["openNorBtn", () => state.graphs.nor],
+    ];
+
+    for (const [btnId, getGraph] of playgroundButtons) {
+        const btn = byId<HTMLButtonElement>(btnId);
+        if (!btn) continue;
+
+        btn.addEventListener("click", () => {
+            const graph = getGraph();
+            if (!graph) return;
+
+            const label = btnId === "openBasicBtn"
+                ? "Basic Gate Circuit"
+                : btnId === "openNandBtn"
+                    ? "NAND-Only Circuit"
+                    : "NOR-Only Circuit";
+
+            const circuitFile = web1ToCircuitFile(graph, label);
+            storeImportedCircuit(circuitFile);
+            window.location.href = "../Web4/index.html";
+        });
+    }
 }
 
 init();

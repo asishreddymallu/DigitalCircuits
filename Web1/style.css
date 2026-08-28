@@ -1106,7 +1106,334 @@ kbd {
     opacity: 0.55;
 }
 
+/* ========== OPEN IN PLAYGROUND BUTTONS ========== */
+
+.playground-buttons {
+    display: grid;
+    grid-template-columns: repeat(auto-fit, minmax(240px, 1fr));
+    gap: 12px;
+    margin-top: 8px;
+}
+
+.playground-export-btn {
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    padding: 16px 20px;
+    background: var(--bg-card-alt);
+    border: 2px solid var(--border-color);
+    border-radius: 14px;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    text-align: left;
+}
+
+.playground-export-btn:hover {
+    border-color: var(--accent-secondary);
+    background: var(--bg-card-hover);
+    transform: translateY(-2px);
+    box-shadow: 0 8px 24px rgba(37, 99, 235, 0.12);
+}
+
+.playground-export-btn:active {
+    transform: scale(0.98);
+}
+
+.playground-export-icon {
+    font-size: 28px;
+    width: 48px;
+    height: 48px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    background: var(--bg-card);
+    border-radius: 12px;
+    border: 1px solid var(--border-color);
+    flex-shrink: 0;
+}
+
+.playground-export-btn strong {
+    display: block;
+    font-size: 14px;
+    font-weight: 800;
+    color: var(--text-primary);
+    margin-bottom: 2px;
+}
+
+.playground-export-btn span:not(.playground-export-icon) {
+    font-size: 12px;
+    color: var(--text-muted);
+}
+
 /* ========== RESPONSIVE ========== */
+
+/* ========== CIRCUIT IMAGE UPLOAD ========== */
+
+.circuit-image-drop-zone {
+    border: 2px dashed var(--border-color);
+    border-radius: 16px;
+    padding: 32px 24px;
+    text-align: center;
+    cursor: pointer;
+    transition: all 0.25s ease;
+    position: relative;
+    background: var(--bg-card-alt);
+    min-height: 160px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+}
+
+.circuit-image-drop-zone:hover,
+.circuit-image-drop-zone.drag-over {
+    border-color: var(--accent-secondary);
+    background: rgba(37, 99, 235, 0.06);
+    box-shadow: 0 0 20px rgba(37, 99, 235, 0.15);
+}
+
+.circuit-image-drop-zone:focus-visible {
+    outline: 2px solid var(--accent-secondary);
+    outline-offset: 2px;
+}
+
+.circuit-image-placeholder {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 8px;
+}
+
+.circuit-image-icon { font-size: 40px; }
+.circuit-image-text { font-size: 15px; font-weight: 700; color: var(--text-primary); }
+.circuit-image-subtext { font-size: 13px; color: var(--text-muted); }
+
+.circuit-image-file-input {
+    position: absolute;
+    inset: 0;
+    opacity: 0;
+    cursor: pointer;
+}
+
+.circuit-image-preview {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 12px;
+}
+
+.circuit-image-preview img {
+    max-width: 100%;
+    max-height: 260px;
+    border-radius: 12px;
+    border: 1.5px solid var(--border-color);
+    object-fit: contain;
+}
+
+.circuit-image-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.circuit-image-status {
+    padding: 10px 14px;
+    border-left: 3px solid var(--accent-secondary);
+    border-radius: 8px;
+    background: var(--bg-card-alt);
+    font-weight: 600;
+}
+
+.circuit-image-status.status-loading {
+    border-left-color: #f59e0b;
+    background: rgba(245, 158, 11, 0.08);
+    color: #f59e0b;
+}
+
+.circuit-image-status.status-success {
+    border-left-color: #10b981;
+    background: rgba(16, 185, 129, 0.08);
+    color: #10b981;
+}
+
+.circuit-image-status.status-error {
+    border-left-color: #ef4444;
+    background: rgba(239, 68, 68, 0.08);
+    color: #ef4444;
+}
+
+/* ========== WAVEFORM PLAYGROUND ========== */
+
+.waveform-playground-card {
+    border: 2px solid rgba(56, 189, 248, 0.3);
+    background: var(--bg-card);
+}
+
+.waveform-controls {
+    display: flex;
+    align-items: center;
+    gap: 16px;
+    flex-wrap: wrap;
+    padding-bottom: 14px;
+    border-bottom: 1px solid var(--border-color);
+    margin-bottom: 14px;
+}
+
+.waveform-btn-group {
+    display: flex;
+    gap: 6px;
+}
+
+.waveform-ctrl-btn {
+    padding: 7px 14px;
+    border-radius: 8px;
+    border: 1.5px solid var(--border-color);
+    background: var(--bg-card-alt);
+    color: var(--text-primary);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.15s ease;
+}
+
+.waveform-ctrl-btn:hover {
+    border-color: var(--accent-secondary);
+    color: var(--accent-secondary);
+}
+
+.waveform-ctrl-btn.active {
+    background: rgba(37, 99, 235, 0.15);
+    border-color: var(--accent-secondary);
+    color: var(--accent-secondary);
+}
+
+.waveform-speed-control {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+    font-weight: 600;
+    color: var(--text-muted);
+}
+
+.waveform-speed-control input[type="range"] {
+    width: 120px;
+}
+
+.waveform-zoom-control {
+    display: flex;
+    gap: 4px;
+    margin-left: auto;
+}
+
+.waveform-steps-control {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 13px;
+    color: var(--text-muted);
+}
+.waveform-steps-control select {
+    padding: 4px 8px;
+    border-radius: 6px;
+    border: 1px solid var(--border-color);
+    background: var(--bg-card);
+    color: var(--text-primary);
+    font-size: 13px;
+}
+
+.waveform-grid-editor {
+    margin-bottom: 12px;
+    overflow-x: auto;
+}
+
+.waveform-input-rows {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+}
+
+.waveform-input-row {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+}
+
+.waveform-input-label {
+    width: 30px;
+    font-size: 13px;
+    font-weight: 800;
+    color: var(--accent-secondary);
+    text-align: right;
+    font-family: 'JetBrains Mono', monospace;
+}
+
+.waveform-input-cells {
+    display: flex;
+    gap: 1px;
+}
+
+.waveform-cell {
+    width: 24px;
+    height: 24px;
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    font-size: 11px;
+    font-weight: 800;
+    font-family: 'JetBrains Mono', monospace;
+    border-radius: 3px;
+    cursor: pointer;
+    transition: all 0.1s ease;
+    user-select: none;
+}
+
+.waveform-cell-low {
+    background: var(--bg-card-alt);
+    color: var(--text-muted);
+    border: 1px solid var(--border-color);
+}
+
+.waveform-cell-high {
+    background: rgba(16, 185, 129, 0.2);
+    color: #10b981;
+    border: 1px solid #10b981;
+}
+
+.waveform-cell-output {
+    background: rgba(56, 189, 248, 0.15);
+    color: var(--accent-secondary);
+    border: 1px solid var(--accent-secondary);
+    cursor: default;
+}
+
+.waveform-cell:hover {
+    transform: scale(1.1);
+}
+
+.waveform-cell.current-step {
+    box-shadow: 0 0 8px rgba(56, 189, 248, 0.6);
+    outline: 2px solid var(--accent-secondary);
+}
+
+.waveform-canvas-wrapper {
+    background: var(--circuit-bg);
+    border: 1.5px solid var(--circuit-border);
+    border-radius: 12px;
+    overflow: hidden;
+    margin-bottom: 10px;
+}
+
+.waveform-canvas {
+    width: 100%;
+    display: block;
+}
+
+.waveform-time-info {
+    display: flex;
+    gap: 20px;
+    font-size: 13px;
+    color: var(--text-muted);
+    font-weight: 600;
+}
 
 @media (max-width: 768px) {
     .global-navbar { height: auto; padding: 10px 16px; }

@@ -11,12 +11,16 @@
     "build:web1": "node scripts/build.mjs web1",
     "build:web2": "node scripts/build.mjs web2",
     "build:web3": "node scripts/build.mjs web3",
+    "build:web4": "node scripts/build.mjs web4",
     "test": "vitest run",
     "test:watch": "vitest",
+    "test:e2e": "npx playwright test",
+    "test:e2e:ui": "npx playwright test --ui",
     "test:backend": "python3 -m pytest tests/backend -q",
     "check:shared": "node scripts/check-shared-sync.mjs"
   },
   "devDependencies": {
+    "@playwright/test": "^1.62.1",
     "esbuild": "^0.23.0",
     "typescript": "~5.5.4",
     "vite": "^5.4.0",

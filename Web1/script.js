@@ -835,6 +835,8 @@
         return fromTruthSelections(raw.truthSelections ?? []);
       case "wordProblem":
         return fromWordProblem(raw.wordProblem);
+      case "circuitImage":
+        return fromCircuitImage(raw.circuitImage);
     }
   }
   function finish(mode, variables, originalAst, originalDisplay, rows, dontCares) {
@@ -975,6 +977,39 @@
       dontCares
     );
   }
+  function fromCircuitImage(ci) {
+    if (ci.variables.length === 0) {
+      throw new SolverInputError("The AI backend couldn't identify any variables in the circuit image.");
+    }
+    assertVarLimit(ci.variables.length);
+    const dontCares = new Set(ci.dontCares.filter((d) => !ci.minterms.includes(d)));
+    const sorted = [...new Set(ci.minterms)].sort((a, b) => a - b);
+    validateIndices(sorted, ci.variables.length, "Minterm");
+    const display = ci.expression || (sorted.length === 0 ? "0" : sorted.length === 1 << ci.variables.length ? "1" : sorted.map((m) => termToString(toPattern(m, ci.variables.length), ci.variables)).join(" + "));
+    let originalAst;
+    let originalDisplay;
+    if (ci.expression) {
+      try {
+        const parsed = parseExpression(ci.expression);
+        originalAst = parsed.ast;
+        originalDisplay = ci.expression;
+      } catch {
+        originalAst = astFromMinterms(sorted, ci.variables);
+        originalDisplay = display;
+      }
+    } else {
+      originalAst = astFromMinterms(sorted, ci.variables);
+      originalDisplay = display;
+    }
+    return finish(
+      "circuitImage",
+      ci.variables,
+      originalAst,
+      originalDisplay,
+      rowsFromMinterms(ci.variables.length, sorted, dontCares),
+      dontCares
+    );
+  }
   function fromWordProblem(wp) {
     if (wp.variables.length === 0) {
       throw new SolverInputError("The AI backend couldn't identify any variables in that problem.");
@@ -1023,6 +1058,79 @@
     const override = window.DC_BOOLEAN_API_BASE;
     const base = override || DEFAULT_API_BASE;
     return base.replace(/\/+$/, "");
+  }
+  function preprocessImage(file) {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => {
+        const img = new Image();
+        img.onload = () => {
+          const MAX_DIM = 1024;
+          let w = img.width;
+          let h = img.height;
+          if (w > MAX_DIM || h > MAX_DIM) {
+            const scale = MAX_DIM / Math.max(w, h);
+            w = Math.round(w * scale);
+            h = Math.round(h * scale);
+          }
+          const canvas = document.createElement("canvas");
+          canvas.width = w;
+          canvas.height = h;
+          const ctx = canvas.getContext("2d");
+          if (!ctx) {
+            reject(new Error("Canvas not available"));
+            return;
+          }
+          ctx.drawImage(img, 0, 0, w, h);
+          resolve(canvas.toDataURL("image/png"));
+        };
+        img.onerror = () => reject(new Error("Failed to load image"));
+        img.src = reader.result;
+      };
+      reader.onerror = () => reject(new Error("Failed to read file"));
+      reader.readAsDataURL(file);
+    });
+  }
+  async function analyzeCircuitImage(imageDataUrl, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6e4);
+    const onExternalAbort = () => controller.abort();
+    options.signal?.addEventListener("abort", onExternalAbort);
+    try {
+      const response = await fetch(`${apiBase()}/api/analyze-circuit-image`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageDataUrl }),
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        let detail = `Request failed (${response.status})`;
+        try {
+          const body = await response.json();
+          if (body && typeof body.detail === "string") detail = body.detail;
+        } catch {
+        }
+        throw new ApiError(detail);
+      }
+      const data = await response.json();
+      return {
+        variables: Array.isArray(data.variables) ? data.variables.map(String) : [],
+        minterms: Array.isArray(data.minterms) ? data.minterms.map(Number) : [],
+        dontCares: Array.isArray(data.dont_cares) ? data.dont_cares.map(Number) : [],
+        expression: typeof data.expression === "string" ? data.expression : void 0,
+        confidence: typeof data.confidence === "number" ? data.confidence : void 0,
+        circuit: data.circuit && typeof data.circuit === "object" ? data.circuit : void 0
+      };
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new ApiError("The AI backend did not respond in time. Please try again.");
+      }
+      throw new ApiError("Could not reach the AI backend. Check your connection and try again.");
+    } finally {
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onExternalAbort);
+    }
   }
   async function fetchMintermsFromProblem(problemStatement, options = {}) {
     if (!problemStatement.trim()) {
@@ -1075,6 +1183,240 @@
       options.signal?.removeEventListener("abort", onExternalAbort);
     }
   }
+
+  // shared/ts/circuit/gates.ts
+  var SOURCE_TYPES = /* @__PURE__ */ new Set(["INPUT", "CONST", "CLOCK", "SWITCH"]);
+
+  // shared/ts/circuit/interop.ts
+  var GATE_SIZES = {
+    INPUT: { width: 80, height: 50 },
+    OUTPUT: { width: 80, height: 50 },
+    CONST: { width: 70, height: 50 },
+    CLOCK: { width: 80, height: 50 },
+    SWITCH: { width: 80, height: 50 },
+    LED: { width: 70, height: 50 },
+    BUFFER: { width: 60, height: 50 },
+    NOT: { width: 70, height: 50 },
+    AND: { width: 80, height: 60 },
+    OR: { width: 80, height: 60 },
+    NAND: { width: 90, height: 60 },
+    NOR: { width: 90, height: 60 },
+    XOR: { width: 80, height: 60 },
+    XNOR: { width: 90, height: 60 }
+  };
+  var GRID_SIZE = 20;
+  function convertWeb1Circuit(web1) {
+    const idMap = /* @__PURE__ */ new Map();
+    const sharedNodes = [];
+    const connections = [];
+    const inputNodeIds = [];
+    let connCounter = 0;
+    for (const node of web1.nodes) {
+      const newId = `s_${node.id}`;
+      idMap.set(node.id, newId);
+      const sharedNode = {
+        id: newId,
+        type: node.type,
+        label: node.label,
+        inputs: [],
+        config: node.type === "CONST" ? { value: node.label === "1" } : void 0
+      };
+      sharedNodes.push(sharedNode);
+      if (SOURCE_TYPES.has(node.type)) {
+        inputNodeIds.push(newId);
+      }
+    }
+    for (const node of web1.nodes) {
+      const targetId = idMap.get(node.id);
+      for (let port = 0; port < node.inputs.length; port++) {
+        const sourceId = idMap.get(node.inputs[port]);
+        if (sourceId) {
+          connections.push({
+            id: `conn_${connCounter++}`,
+            sourceId,
+            targetId,
+            targetPort: port
+          });
+        }
+      }
+    }
+    return {
+      id: `shared_${Date.now()}`,
+      name: "Converted Circuit",
+      version: 1,
+      nodes: sharedNodes,
+      connections,
+      inputNodeIds,
+      outputNodeId: idMap.get(web1.output)
+    };
+  }
+  function getInputCount(type) {
+    switch (type) {
+      case "INPUT":
+      case "SWITCH":
+      case "CONST":
+      case "CLOCK":
+        return 0;
+      case "NOT":
+      case "BUFFER":
+      case "OUTPUT":
+      case "LED":
+        return 1;
+      default:
+        return 2;
+    }
+  }
+  function getOutputCount(type) {
+    switch (type) {
+      case "OUTPUT":
+      case "LED":
+        return 0;
+      default:
+        return 1;
+    }
+  }
+  function getDefaultInputPorts(type, width, height) {
+    const count = getInputCount(type);
+    if (count === 0) return [];
+    if (count === 1) return [{ x: 0, y: height / 2, side: "left", index: 0 }];
+    const ports = [];
+    for (let i = 0; i < count; i++) {
+      const y = 15 + i * (height - 30) / (count - 1);
+      ports.push({ x: 0, y, side: "left", index: i });
+    }
+    return ports;
+  }
+  function getDefaultOutputPorts(type, width, height) {
+    const count = getOutputCount(type);
+    if (count === 0) return [];
+    if (count === 1) return [{ x: width, y: height / 2, side: "right", index: 0 }];
+    const ports = [];
+    for (let i = 0; i < count; i++) {
+      const y = 15 + i * (height - 30) / (count - 1);
+      ports.push({ x: width, y, side: "right", index: i });
+    }
+    return ports;
+  }
+  function importSharedToWeb4(shared) {
+    const layers = topologicalLayers(shared);
+    const layerMap = /* @__PURE__ */ new Map();
+    for (let i = 0; i < layers.length; i++) {
+      for (const id of layers[i]) {
+        layerMap.set(id, i);
+      }
+    }
+    const nodes = [];
+    const H_SPACING = 140;
+    const V_SPACING = 90;
+    const START_X = 60;
+    const START_Y = 60;
+    const layerCounts = /* @__PURE__ */ new Map();
+    for (const [, layer] of layerMap) {
+      layerCounts.set(layer, (layerCounts.get(layer) ?? 0) + 1);
+    }
+    const layerIndexCounters = /* @__PURE__ */ new Map();
+    for (const node of shared.nodes) {
+      const layer = layerMap.get(node.id) ?? 0;
+      const size = GATE_SIZES[node.type] ?? { width: 80, height: 60 };
+      const idx = layerIndexCounters.get(layer) ?? 0;
+      const totalInLayer = layerCounts.get(layer) ?? 1;
+      const x = START_X + layer * H_SPACING;
+      const totalHeight = totalInLayer * V_SPACING;
+      const y = START_Y + idx * V_SPACING - totalHeight / 2 + 200;
+      layerIndexCounters.set(layer, idx + 1);
+      nodes.push({
+        id: node.id,
+        type: node.type,
+        x: Math.round(x / GRID_SIZE) * GRID_SIZE,
+        y: Math.round(y / GRID_SIZE) * GRID_SIZE,
+        width: size.width,
+        height: size.height,
+        rotation: 0,
+        label: node.label || node.type,
+        config: node.config,
+        inputPorts: getDefaultInputPorts(node.type, size.width, size.height),
+        outputPorts: getDefaultOutputPorts(node.type, size.width, size.height)
+      });
+    }
+    const wires = shared.connections.map((conn, i) => ({
+      id: `w_${i}`,
+      sourceNodeId: conn.sourceId,
+      sourcePort: 0,
+      // most gates have 1 output
+      targetNodeId: conn.targetId,
+      targetPort: conn.targetPort,
+      points: [],
+      // will be computed by the renderer
+      value: false
+    }));
+    return {
+      nodes,
+      wires,
+      inputNodeIds: shared.inputNodeIds,
+      outputNodeIds: shared.outputNodeId ? [shared.outputNodeId] : []
+    };
+  }
+  function topologicalLayers(graph) {
+    const inDegree = /* @__PURE__ */ new Map();
+    const adjacency = /* @__PURE__ */ new Map();
+    for (const node of graph.nodes) {
+      inDegree.set(node.id, 0);
+      adjacency.set(node.id, []);
+    }
+    for (const conn of graph.connections) {
+      adjacency.get(conn.sourceId)?.push(conn.targetId);
+      inDegree.set(conn.targetId, (inDegree.get(conn.targetId) ?? 0) + 1);
+    }
+    const layers = [];
+    let queue = [];
+    for (const [id, deg] of inDegree) {
+      if (deg === 0) queue.push(id);
+    }
+    while (queue.length > 0) {
+      layers.push([...queue]);
+      const nextQueue = [];
+      for (const id of queue) {
+        for (const neighbor of adjacency.get(id) ?? []) {
+          const newDeg = (inDegree.get(neighbor) ?? 1) - 1;
+          inDegree.set(neighbor, newDeg);
+          if (newDeg === 0) nextQueue.push(neighbor);
+        }
+      }
+      queue = nextQueue;
+    }
+    return layers;
+  }
+  var WEB1_IMPORT_KEY = "w4_imported_from_web1";
+  function web1ToCircuitFile(web1, name) {
+    const shared = convertWeb1Circuit(web1);
+    const w4 = importSharedToWeb4(shared);
+    return {
+      id: shared.id,
+      name: name || "Imported from Boolean Solver",
+      version: 1,
+      nodes: w4.nodes,
+      wires: w4.wires,
+      inputNodeIds: w4.inputNodeIds,
+      outputNodeIds: w4.outputNodeIds,
+      savedAt: (/* @__PURE__ */ new Date()).toISOString()
+    };
+  }
+  function storeImportedCircuit(circuit) {
+    try {
+      localStorage.setItem(WEB1_IMPORT_KEY, JSON.stringify(circuit));
+    } catch (e) {
+      console.error("Failed to store imported circuit:", e);
+    }
+  }
+
+  // Web1/src/state.ts
+  var state = {
+    variables: [],
+    rows: [],
+    graphs: { basic: null, nand: null, nor: null },
+    probeState: {},
+    kmap: { implicants: null, variables: [] }
+  };
 
   // shared/ts/exporters/verilog.ts
   function toVerilogExpr(node) {
@@ -1174,15 +1516,6 @@ bool ${functionName}(${args}) {
   function generateLatex(ast, outputName = "F") {
     return `$$${outputName} = ${toLatexExpr(ast)}$$`;
   }
-
-  // Web1/src/state.ts
-  var state = {
-    variables: [],
-    rows: [],
-    graphs: { basic: null, nand: null, nor: null },
-    probeState: {},
-    kmap: { implicants: null, variables: [] }
-  };
 
   // Web1/src/circuits/gates.ts
   function getMultiInputY(y, h, i, count) {
@@ -1881,6 +2214,268 @@ bool ${functionName}(${args}) {
     }
   }
 
+  // Web1/src/ui/waveform.ts
+  var state2 = {
+    variables: [],
+    expression: null,
+    stepCount: 16,
+    patterns: {},
+    outputPattern: [],
+    currentStep: 0,
+    isPlaying: false,
+    speed: 500,
+    timer: null,
+    zoomLevel: 1
+  };
+  function initWaveformPlayground(variables, expression) {
+    state2.variables = variables;
+    state2.expression = expression;
+    state2.stepCount = 16;
+    state2.currentStep = 0;
+    state2.isPlaying = false;
+    state2.patterns = {};
+    variables.forEach((v, idx) => {
+      const pattern = [];
+      const period = 1 << variables.length - 1 - idx;
+      for (let step = 0; step < state2.stepCount; step++) {
+        pattern.push((step / period | 0) % 2 === 1);
+      }
+      state2.patterns[v] = pattern;
+    });
+    computeOutput();
+    renderGridEditor();
+    drawWaveform();
+    updateControls();
+    const section = byId("openInPlaygroundSection");
+    if (section) section.style.display = "";
+  }
+  function resetWaveform() {
+    if (state2.timer) clearInterval(state2.timer);
+    state2.timer = null;
+    state2.isPlaying = false;
+    state2.variables = [];
+    state2.expression = null;
+    state2.patterns = {};
+    state2.outputPattern = [];
+    state2.currentStep = 0;
+  }
+  function computeOutput() {
+    if (!state2.expression || state2.variables.length === 0) return;
+    state2.outputPattern = [];
+    for (let step = 0; step < state2.stepCount; step++) {
+      const assignment = {};
+      state2.variables.forEach((v) => {
+        assignment[v] = state2.patterns[v]?.[step] ?? false;
+      });
+      state2.outputPattern.push(evalAst(state2.expression, assignment));
+    }
+  }
+  function renderGridEditor() {
+    const container = byId("waveformInputRows");
+    if (!container) return;
+    let html = "";
+    state2.variables.forEach((v) => {
+      html += `<div class="waveform-input-row">`;
+      html += `<span class="waveform-input-label">${v}</span>`;
+      html += `<div class="waveform-input-cells">`;
+      for (let step = 0; step < state2.stepCount; step++) {
+        const val = state2.patterns[v]?.[step] ?? false;
+        const cls = val ? "waveform-cell waveform-cell-high" : "waveform-cell waveform-cell-low";
+        const currentCls = step === state2.currentStep ? " current-step" : "";
+        html += `<div class="${cls}${currentCls}" data-var="${v}" data-step="${step}" role="button" tabindex="0" aria-label="${v} step ${step}: ${val ? "1" : "0"}">${val ? "1" : "0"}</div>`;
+      }
+      html += `</div></div>`;
+    });
+    html += `<div class="waveform-input-row">`;
+    html += `<span class="waveform-input-label" style="color:var(--accent-secondary);">F</span>`;
+    html += `<div class="waveform-input-cells">`;
+    for (let step = 0; step < state2.stepCount; step++) {
+      const val = state2.outputPattern[step] ?? false;
+      const cls = val ? "waveform-cell waveform-cell-high" : "waveform-cell waveform-cell-output";
+      const currentCls = step === state2.currentStep ? " current-step" : "";
+      html += `<div class="${cls}${currentCls}">${val ? "1" : "0"}</div>`;
+    }
+    html += `</div></div>`;
+    container.innerHTML = html;
+    container.querySelectorAll("[data-var]").forEach((cell) => {
+      cell.addEventListener("click", () => {
+        const v = cell.getAttribute("data-var");
+        const step = parseInt(cell.getAttribute("data-step"));
+        if (!state2.patterns[v]) state2.patterns[v] = [];
+        state2.patterns[v][step] = !state2.patterns[v][step];
+        computeOutput();
+        renderGridEditor();
+        drawWaveform();
+      });
+      cell.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          cell.click();
+        }
+      });
+    });
+  }
+  function drawWaveform() {
+    const canvas = byId("waveformCanvas");
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const wrapper = canvas.parentElement;
+    if (wrapper) {
+      canvas.width = wrapper.clientWidth - 2;
+    }
+    const w = canvas.width;
+    const h = canvas.height;
+    ctx.clearRect(0, 0, w, h);
+    if (state2.variables.length === 0) return;
+    const signalNames = [...state2.variables, "F"];
+    const startX = 50;
+    const graphWidth = w - startX - 20;
+    const rowHeight = Math.min(28, Math.floor((h - 10) / signalNames.length));
+    const stepX = graphWidth / Math.max(1, state2.stepCount - 1);
+    ctx.strokeStyle = "rgba(255,255,255,0.04)";
+    ctx.lineWidth = 1;
+    for (let i = 0; i < state2.stepCount; i++) {
+      const x = startX + i * stepX;
+      ctx.beginPath();
+      ctx.moveTo(x, 5);
+      ctx.lineTo(x, h - 5);
+      ctx.stroke();
+    }
+    const curX = startX + state2.currentStep * stepX;
+    ctx.strokeStyle = "rgba(56, 189, 248, 0.3)";
+    ctx.lineWidth = 2;
+    ctx.beginPath();
+    ctx.moveTo(curX, 5);
+    ctx.lineTo(curX, h - 5);
+    ctx.stroke();
+    signalNames.forEach((name, idx) => {
+      const isOutput = name === "F";
+      const pattern = isOutput ? state2.outputPattern : state2.patterns[name];
+      if (!pattern) return;
+      const topY = 10 + idx * rowHeight;
+      const lowY = topY + rowHeight - 5;
+      const highY = topY + 5;
+      ctx.font = "bold 11px 'JetBrains Mono', monospace";
+      ctx.fillStyle = isOutput ? "#34d399" : "#60a5fa";
+      ctx.textAlign = "right";
+      ctx.fillText(name, startX - 8, (highY + lowY) / 2 + 4);
+      ctx.strokeStyle = isOutput ? "#10b981" : "#38bdf8";
+      ctx.lineWidth = 2;
+      ctx.beginPath();
+      for (let step = 0; step < state2.stepCount; step++) {
+        const x = startX + step * stepX;
+        const val = pattern[step];
+        const y = val ? highY : lowY;
+        if (step === 0) {
+          ctx.moveTo(x, y);
+        } else {
+          const prevVal = pattern[step - 1];
+          const prevY = prevVal ? highY : lowY;
+          if (prevY !== y) {
+            ctx.lineTo(x, prevY);
+            ctx.lineTo(x, y);
+          } else {
+            ctx.lineTo(x, y);
+          }
+        }
+      }
+      ctx.stroke();
+    });
+    byId("waveformTimeDisplay").textContent = String(state2.currentStep);
+    byId("waveformPeriodDisplay").textContent = String(state2.stepCount);
+  }
+  function updateControls() {
+    const playBtn = byId("waveformPlayBtn");
+    const pauseBtn = byId("waveformPauseBtn");
+    if (playBtn) playBtn.classList.toggle("active", !state2.isPlaying);
+    if (pauseBtn) pauseBtn.classList.toggle("active", state2.isPlaying);
+  }
+  function stepForward() {
+    state2.currentStep = (state2.currentStep + 1) % state2.stepCount;
+    renderGridEditor();
+    drawWaveform();
+  }
+  function stepBackward() {
+    state2.currentStep = (state2.currentStep - 1 + state2.stepCount) % state2.stepCount;
+    renderGridEditor();
+    drawWaveform();
+  }
+  function startPlay() {
+    if (state2.isPlaying) return;
+    state2.isPlaying = true;
+    state2.timer = setInterval(() => {
+      stepForward();
+      updateControls();
+    }, state2.speed);
+    updateControls();
+  }
+  function pausePlay() {
+    if (!state2.isPlaying) return;
+    state2.isPlaying = false;
+    if (state2.timer) clearInterval(state2.timer);
+    state2.timer = null;
+    updateControls();
+  }
+  function stopPlay() {
+    pausePlay();
+    state2.currentStep = 0;
+    renderGridEditor();
+    drawWaveform();
+  }
+  function setupWaveformControls() {
+    byId("waveformPlayBtn")?.addEventListener("click", startPlay);
+    byId("waveformPauseBtn")?.addEventListener("click", pausePlay);
+    byId("waveformStopBtn")?.addEventListener("click", stopPlay);
+    byId("waveformStepFwdBtn")?.addEventListener("click", stepForward);
+    byId("waveformStepBackBtn")?.addEventListener("click", stepBackward);
+    const speedSlider = byId("waveformSpeed");
+    const speedLabel = byId("waveformSpeedLabel");
+    if (speedSlider) {
+      speedSlider.addEventListener("input", () => {
+        state2.speed = Number(speedSlider.value);
+        if (speedLabel) speedLabel.textContent = `${state2.speed}ms`;
+        if (state2.isPlaying) {
+          pausePlay();
+          startPlay();
+        }
+      });
+    }
+    byId("waveformZoomIn")?.addEventListener("click", () => {
+      state2.zoomLevel = Math.min(3, state2.zoomLevel + 0.5);
+      drawWaveform();
+    });
+    byId("waveformZoomOut")?.addEventListener("click", () => {
+      state2.zoomLevel = Math.max(0.5, state2.zoomLevel - 0.5);
+      drawWaveform();
+    });
+    const stepsSelect = byId("waveformSteps");
+    if (stepsSelect) {
+      stepsSelect.addEventListener("change", () => {
+        const newCount = Number(stepsSelect.value);
+        if (newCount !== state2.stepCount && state2.variables.length > 0) {
+          state2.stepCount = newCount;
+          state2.currentStep = 0;
+          state2.variables.forEach((v, idx) => {
+            const pattern = [];
+            const period = 1 << state2.variables.length - 1 - idx;
+            for (let step = 0; step < state2.stepCount; step++) {
+              pattern.push((step / period | 0) % 2 === 1);
+            }
+            state2.patterns[v] = pattern;
+          });
+          computeOutput();
+          renderGridEditor();
+          drawWaveform();
+          updateControls();
+          const periodDisplay = byId("waveformPeriodDisplay");
+          if (periodDisplay) periodDisplay.textContent = String(state2.stepCount);
+        }
+      });
+    }
+    window.addEventListener("resize", () => drawWaveform());
+  }
+
   // Web1/src/ui/results.ts
   function copyToClipboard(text, btn, onSound) {
     onSound?.(true);
@@ -1992,6 +2587,7 @@ bool ${functionName}(${args}) {
     return frag;
   }
   function clearResults() {
+    resetWaveform();
     byId("results").classList.add("hidden");
     maybeById("dontCareResults")?.classList.add("hidden");
     const statusEl = maybeById("wordProblemStatus");
@@ -2062,6 +2658,7 @@ bool ${functionName}(${args}) {
     byId("verification").replaceChildren(
       renderVerification(verified, model.variables.length, callbacks.onSound)
     );
+    initWaveformPlayground(model.variables, model.simplifiedAst);
     const resultsSection = byId("results");
     resultsSection.classList.remove("hidden");
     resultsSection.scrollIntoView({ behavior: "smooth" });
@@ -2253,7 +2850,8 @@ bool ${functionName}(${args}) {
       maxterms: "maxtermSection",
       dontCare: "dontCareSection",
       truthTable: "truthTableSection",
-      wordProblem: "wordProblemSection"
+      wordProblem: "wordProblemSection",
+      circuitImage: "circuitImageSection"
     };
     Object.entries(sections).forEach(([mode, id]) => {
       document.getElementById(id)?.classList.toggle("hidden", mode !== type);
@@ -2348,6 +2946,8 @@ bool ${functionName}(${args}) {
         return { mode, truthSelections: readTruthTableSelections() };
       case "wordProblem":
         return { mode };
+      case "circuitImage":
+        return { mode };
     }
   }
   var activeAiRequest = null;
@@ -2395,6 +2995,11 @@ bool ${functionName}(${args}) {
         if (!wp) return;
         raw = { ...raw, wordProblem: wp };
       }
+      if (raw.mode === "circuitImage") {
+        const ci = await runCircuitImage();
+        if (!ci) return;
+        raw = { ...raw, circuitImage: ci };
+      }
       const model = buildSolverModel(raw);
       renderResults(model, { onSound: () => window.StudioFX?.success(), onClickSound: sound });
     } catch (error) {
@@ -2404,14 +3009,147 @@ bool ${functionName}(${args}) {
       showError(errMsg);
     }
   }
+  var circuitImageDataUrl = null;
+  async function runCircuitImage() {
+    if (!circuitImageDataUrl) throw new SolverInputError("Please upload a circuit image first.");
+    activeAiRequest?.abort();
+    const controller = new AbortController();
+    activeAiRequest = controller;
+    const statusEl = byId("circuitImageStatus");
+    statusEl.textContent = "Analyzing circuit image...";
+    statusEl.className = "help-text circuit-image-status status-loading";
+    statusEl.classList.remove("hidden");
+    byId("solveButton").disabled = true;
+    try {
+      const result = await analyzeCircuitImage(circuitImageDataUrl, { signal: controller.signal });
+      if (!result.variables || result.variables.length === 0) {
+        statusEl.textContent = "The circuit image could not be interpreted confidently. Please try a clearer image.";
+        statusEl.className = "help-text circuit-image-status status-error";
+        throw new SolverInputError("Could not interpret the circuit image.");
+      }
+      if (result.confidence !== void 0 && result.confidence < 0.5) {
+        statusEl.textContent = `Low confidence (${Math.round(result.confidence * 100)}%). Results may be inaccurate.`;
+        statusEl.className = "help-text circuit-image-status status-loading";
+      } else {
+        statusEl.textContent = "Circuit analysis complete!";
+        statusEl.className = "help-text circuit-image-status status-success";
+      }
+      return {
+        variables: result.variables,
+        minterms: result.minterms,
+        dontCares: result.dontCares,
+        expression: result.expression
+      };
+    } catch (err) {
+      if (controller.signal.aborted && !activeAiRequest?.signal.aborted) {
+        throw new SolverInputError("__superseded__");
+      }
+      if (err instanceof Error && err.name === "AbortError") {
+        statusEl.textContent = "Request cancelled.";
+        statusEl.className = "help-text circuit-image-status status-error";
+        throw new SolverInputError("__cancelled__");
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      statusEl.textContent = `Analysis failed: ${message}`;
+      statusEl.className = "help-text circuit-image-status status-error";
+      throw new SolverInputError("Circuit image analysis failed.");
+    } finally {
+      if (activeAiRequest === controller) activeAiRequest = null;
+      byId("solveButton").disabled = false;
+    }
+  }
+  function initCircuitImageUpload() {
+    const dropZone = byId("circuitImageDropZone");
+    const fileInput = byId("circuitImageInput");
+    const placeholder = byId("circuitImagePlaceholder");
+    const preview = byId("circuitImagePreview");
+    const img = byId("circuitImageImg");
+    const status = byId("circuitImageStatus");
+    const replaceBtn = byId("circuitImageReplaceBtn");
+    const removeBtn = byId("circuitImageRemoveBtn");
+    async function handleFile(file) {
+      if (!file.type.match(/^image\/(png|jpeg|webp)$/)) {
+        status.textContent = "Unsupported format. Please use PNG, JPEG, or WebP.";
+        status.className = "help-text circuit-image-status status-error";
+        status.classList.remove("hidden");
+        return;
+      }
+      try {
+        status.textContent = "Processing image...";
+        status.className = "help-text circuit-image-status status-loading";
+        status.classList.remove("hidden");
+        circuitImageDataUrl = await preprocessImage(file);
+        img.src = circuitImageDataUrl;
+        placeholder.classList.add("hidden");
+        preview.classList.remove("hidden");
+        status.textContent = "Image ready. Click Solve to analyze.";
+        status.className = "help-text circuit-image-status status-success";
+      } catch (e) {
+        status.textContent = "Failed to process image.";
+        status.className = "help-text circuit-image-status status-error";
+        circuitImageDataUrl = null;
+      }
+    }
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const file = e.dataTransfer?.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (file) handleFile(file);
+    });
+    replaceBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      circuitImageDataUrl = null;
+      img.src = "";
+      placeholder.classList.remove("hidden");
+      preview.classList.add("hidden");
+      fileInput.value = "";
+      status.classList.add("hidden");
+    });
+    dropZone.addEventListener("click", (e) => {
+      if (e.target.closest(".circuit-image-actions")) return;
+      fileInput.click();
+    });
+  }
   function init() {
     initInputControls(sound);
+    initCircuitImageUpload();
+    setupWaveformControls();
     updateNumericExamples();
     generateTruthTableInput(Number(byId("truthVariables").value));
     initZoomPanControls(sound);
     byId("solveButton").addEventListener("click", () => {
       void solve();
     });
+    const playgroundButtons = [
+      ["openBasicBtn", () => state.graphs.basic],
+      ["openNandBtn", () => state.graphs.nand],
+      ["openNorBtn", () => state.graphs.nor]
+    ];
+    for (const [btnId, getGraph] of playgroundButtons) {
+      const btn = byId(btnId);
+      if (!btn) continue;
+      btn.addEventListener("click", () => {
+        const graph = getGraph();
+        if (!graph) return;
+        const label = btnId === "openBasicBtn" ? "Basic Gate Circuit" : btnId === "openNandBtn" ? "NAND-Only Circuit" : "NOR-Only Circuit";
+        const circuitFile = web1ToCircuitFile(graph, label);
+        storeImportedCircuit(circuitFile);
+        window.location.href = "../Web4/index.html";
+      });
+    }
   }
   init();
 })();

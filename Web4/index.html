@@ -1,0 +1,223 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Interactive Digital Logic Playground - Design, simulate and analyze digital circuits with drag-and-drop gates and live simulation.">
+    <title>Digital Logic Playground</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="fx.js"></script>
+</head>
+<body>
+
+<!-- GLOBAL NAVIGATION BAR -->
+<nav class="global-navbar">
+    <div class="nav-container">
+        <a href="../index.html" class="nav-brand">
+            <span class="brand-icon-pulse">⚡</span>
+            <span>Digital Circuits Suite</span>
+            <span class="brand-badge">Tool 4</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="../index.html" class="nav-link">🏠 Home</a></li>
+            <li><a href="../Web1/index.html" class="nav-link">⚡ Boolean Solver</a></li>
+            <li><a href="../Web2/index.html" class="nav-link">🔧 Circuits Sim</a></li>
+            <li><a href="../Web3/index.html" class="nav-link">🔢 7-Segment Display</a></li>
+            <li><a href="index.html" class="nav-link active">🎮 Logic Playground</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
+                🔊 <span class="sound-label">Sound: ON</span>
+            </button>
+            <button type="button" class="nav-tool-btn theme-toggle-btn" aria-label="Toggle theme">
+                🌙 <span class="theme-label">Dark Mode</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- BREADCRUMB BAR -->
+<div class="breadcrumb-bar">
+    <a href="../index.html">Home</a>
+    <span>/</span>
+    <span>Digital Logic Playground</span>
+</div>
+
+<!-- PAGE HEADER -->
+<header class="w4-page-header">
+    <h1>Digital Logic Playground</h1>
+    <p>Design, wire and simulate digital circuits with drag-and-drop gates, live signal propagation and waveform analysis.</p>
+</header>
+
+<!-- MAIN PLAYGROUND CARD -->
+<div class="w4-playground-card">
+
+    <!-- LEFT SIDEBAR: Gate Palette -->
+    <aside class="w4-sidebar" id="w4Palette">
+        <!-- Populated by JS -->
+    </aside>
+
+    <!-- CENTER: Canvas + Toolbar -->
+    <main class="w4-main">
+        <!-- Toolbar -->
+        <div class="w4-top-toolbar" id="w4Toolbar">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- Circuit Canvas -->
+        <div class="w4-canvas-wrapper" id="w4Canvas">
+            <svg class="w4-svg" xmlns="http://www.w3.org/2000/svg"></svg>
+            <!-- Live probe tooltip -->
+            <div class="w4-probe-tooltip" id="w4ProbeTooltip" style="display:none;"></div>
+        </div>
+
+        <!-- Status Bar -->
+        <div class="w4-status-bar" id="w4StatusBar">
+            <!-- Populated by JS -->
+        </div>
+
+        <!-- Waveform / Oscilloscope (below canvas, stretches full width) -->
+        <div class="w4-waveform-panel" id="w4WaveformPanel">
+            <div class="w4-waveform-header">
+                <span class="w4-waveform-title">📊 Waveform / Oscilloscope</span>
+                <span class="w4-waveform-controls">
+                    <button type="button" class="w4-waveform-ctrl-btn" id="w4WaveformPause" title="Pause / Resume">⏸</button>
+                    <button type="button" class="w4-waveform-ctrl-btn" id="w4WaveformClear" title="Clear waveform">🗑</button>
+                </span>
+            </div>
+            <div class="w4-waveform-canvas-container">
+                <canvas id="w4WaveformCanvas" class="w4-waveform-canvas"></canvas>
+            </div>
+        </div>
+    </main>
+
+</div>
+
+<!-- TOAST NOTIFICATION CONTAINER -->
+<div id="w4ToastContainer" class="w4-toast-container"></div>
+
+<!-- ========================================================== -->
+<!-- INLINE MANUAL / USER GUIDE (below playground, NOT a popup) -->
+<!-- ========================================================== -->
+<section class="w4-manual-section" id="w4Manual">
+    <div class="w4-manual-container">
+
+        <div class="section-heading">
+            <span class="section-number">📖</span>
+            <div>
+                <h2>How to Use the Logic Playground</h2>
+                <p>Complete guide to building, simulating and saving digital circuits.</p>
+            </div>
+        </div>
+
+        <div class="w4-manual-grid">
+
+            <div class="w4-manual-card">
+                <h3>🎯 Quick Start</h3>
+                <ol>
+                    <li><strong>Add gates:</strong> Drag from the left palette onto the canvas, or click a gate in the palette to add it at the center.</li>
+                    <li><strong>Connect gates:</strong> Press <kbd>W</kbd> to enter Wire mode, then click an output port and drag to an input port.</li>
+                    <li><strong>Toggle inputs:</strong> Click INPUT or SWITCH nodes in select mode, or double-click them.</li>
+                    <li><strong>Simulate:</strong> Changes propagate automatically — see outputs update in real time.</li>
+                </ol>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>⌨️ Keyboard Shortcuts</h3>
+                <div class="w4-manual-shortcuts">
+                    <div class="w4-manual-shortcut-row"><kbd>V</kbd> <span>Select mode — click to select/move gates</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>W</kbd> <span>Wire mode — click output port → input port</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>D</kbd> <span>Delete mode — click gates or wires to remove</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Delete</kbd> / <kbd>Backspace</kbd> <span>Delete selected gate(s)</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Ctrl+Z</kbd> <span>Undo last action</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Ctrl+Shift+Z</kbd> <span>Redo last undone action</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Ctrl+S</kbd> <span>Save circuit to browser storage</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Escape</kbd> <span>Cancel wire drawing / deselect all</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Space</kbd> <span>Toggle waveform pause/play</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Scroll wheel</kbd> <span>Zoom in/out</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Alt+Click drag</kbd> <span>Pan the canvas</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Shift+Click</kbd> <span>Multi-select gates</span></div>
+                </div>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>🔧 Gate Reference</h3>
+                <div class="w4-manual-gate-table">
+                    <div class="w4-manual-gate-header"><span>Gate</span><span>Inputs</span><span>Description</span></div>
+                    <div class="w4-manual-gate-row"><span>INPUT / SWITCH</span><span>0</span><span>User-togglable 0/1 source</span></div>
+                    <div class="w4-manual-gate-row"><span>CONST</span><span>0</span><span>Fixed 0 or 1 value (double-click to toggle)</span></div>
+                    <div class="w4-manual-gate-row"><span>CLOCK</span><span>0</span><span>Periodic clock signal (auto-toggles)</span></div>
+                    <div class="w4-manual-gate-row"><span>NOT</span><span>1</span><span>Inverts input: 1→0, 0→1</span></div>
+                    <div class="w4-manual-gate-row"><span>BUFFER</span><span>1</span><span>Passes input unchanged</span></div>
+                    <div class="w4-manual-gate-row"><span>AND</span><span>2</span><span>Output 1 only when both inputs are 1</span></div>
+                    <div class="w4-manual-gate-row"><span>OR</span><span>2</span><span>Output 1 when any input is 1</span></div>
+                    <div class="w4-manual-gate-row"><span>NAND</span><span>2</span><span>NOT of AND — universal gate</span></div>
+                    <div class="w4-manual-gate-row"><span>NOR</span><span>2</span><span>NOT of OR — universal gate</span></div>
+                    <div class="w4-manual-gate-row"><span>XOR</span><span>2</span><span>Output 1 when inputs differ</span></div>
+                    <div class="w4-manual-gate-row"><span>XNOR</span><span>2</span><span>Output 1 when inputs are equal</span></div>
+                    <div class="w4-manual-gate-row"><span>OUTPUT / LED</span><span>1</span><span>Display the result (glows green when 1)</span></div>
+                </div>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>🔗 Wiring Instructions</h3>
+                <ol>
+                    <li>Press <kbd>W</kbd> to enter Wire mode (cursor becomes crosshair).</li>
+                    <li>Click on an <strong>output port</strong> (circle on the right side of a gate).</li>
+                    <li>Drag to an <strong>input port</strong> (circle on the left side of a gate).</li>
+                    <li>Release to create the wire connection.</li>
+                    <li>Fan-out is supported: one output can connect to multiple inputs.</li>
+                    <li>Press <kbd>Escape</kbd> or click empty space to cancel a wire in progress.</li>
+                </ol>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>📊 Simulation</h3>
+                <p>The circuit simulates automatically whenever:</p>
+                <ul>
+                    <li>An input is toggled</li>
+                    <li>A gate is added or removed</li>
+                    <li>A wire is connected or disconnected</li>
+                    <li>A constant value is changed</li>
+                </ul>
+                <p>Signal values propagate through the circuit using topological ordering. The waveform panel below the canvas records a timing diagram of all input and output signals over time.</p>
+                <p>Press <kbd>Space</kbd> to pause/resume waveform recording.</p>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>💾 Save / Load</h3>
+                <ul>
+                    <li><strong>Save (Ctrl+S):</strong> Stores the circuit in your browser's local storage.</li>
+                    <li><strong>Load:</strong> Restores the last saved circuit from local storage.</li>
+                    <li><strong>Export:</strong> Downloads the circuit as a <code>.json</code> file.</li>
+                    <li><strong>Import:</strong> Upload a previously exported <code>.json</code> circuit file.</li>
+                    <li><strong>Clear:</strong> Removes all components (with confirmation).</li>
+                </ul>
+            </div>
+
+            <div class="w4-manual-card w4-manual-tips">
+                <h3>💡 Tips</h3>
+                <ul>
+                    <li>Use <strong>CONST 0</strong> and <strong>CONST 1</strong> for fixed values that don't change during simulation.</li>
+                    <li>Wire value badges (0/1) appear on wire midpoints showing the current signal.</li>
+                    <li>The <strong>Fit</strong> button auto-zooms to show all components.</li>
+                    <li>Multi-select gates with <kbd>Shift+Click</kbd>, then press <kbd>Delete</kbd> to remove them all.</li>
+                    <li>The canvas supports unlimited panning — drag on empty space to move around.</li>
+                </ul>
+            </div>
+
+        </div>
+    </div>
+</section>
+
+<footer class="site-footer">
+    <h3>Digital Logic Playground</h3>
+    <p>Digital Circuits Suite — Interactive Circuit Design Environment</p>
+    <p class="footer-small">Drag gates from the palette, connect wires, and simulate live</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>

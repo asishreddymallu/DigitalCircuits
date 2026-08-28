@@ -17,6 +17,7 @@
     "Web1/src/**/*.ts",
     "Web2/src/**/*.ts",
     "Web3/src/**/*.ts",
+    "Web4/src/**/*.ts",
     "tests/unit/**/*.ts"
   ]
 }

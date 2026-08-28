@@ -325,6 +325,9 @@ def call_gemini(client, prompt: str) -> dict:
     structured output at the API level.
     """
     config = types.GenerateContentConfig(
+        http_options=types.HttpOptions(
+            timeout=GEMINI_TIMEOUT_SECONDS * 1000,  # milliseconds
+        ),
         thinking_config=types.ThinkingConfig(
             thinking_level="MINIMAL"
         ),
@@ -372,9 +375,6 @@ def call_gemini(client, prompt: str) -> dict:
         model=MODEL,
         contents=prompt,
         config=config,
-        http_options=types.HttpOptions(
-            timeout=GEMINI_TIMEOUT_SECONDS * 1000,  # milliseconds
-        ),
     )
 
     if not response.text:

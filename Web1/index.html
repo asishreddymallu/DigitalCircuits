@@ -24,6 +24,7 @@
             <li><a href="index.html" class="nav-link active">⚡ Boolean Solver</a></li>
             <li><a href="../Web2/index.html" class="nav-link">🔧 Circuits Sim</a></li>
             <li><a href="../Web3/index.html" class="nav-link">🔢 7-Segment Display</a></li>
+            <li><a href="../Web4/index.html" class="nav-link">🎮 Logic Playground</a></li>
         </ul>
         <div class="nav-actions">
             <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
@@ -71,6 +72,7 @@
                 <option value="dontCare">Minterms + Don't Cares (Σm + d)</option>
                 <option value="truthTable">Truth Table</option>
                 <option value="wordProblem">Word Problem (AI)</option>
+                <option value="circuitImage">Circuit Image (AI)</option>
             </select>
         </div>
 
@@ -167,6 +169,29 @@
             </div>
             <div id="wordProblemStatus" class="help-text word-problem-status hidden"></div>
             <div id="wordProblemLegend" class="word-problem-legend hidden"></div>
+        </div>
+
+        <!-- Circuit Image Input -->
+        <div id="circuitImageSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label>Upload Circuit Image</label>
+                <div id="circuitImageDropZone" class="circuit-image-drop-zone" role="button" tabindex="0" aria-label="Upload circuit image">
+                    <div id="circuitImagePlaceholder" class="circuit-image-placeholder">
+                        <span class="circuit-image-icon">📷</span>
+                        <span class="circuit-image-text">Drag & drop a circuit image here</span>
+                        <span class="circuit-image-subtext">or click to browse • PNG, JPEG, WebP supported</span>
+                    </div>
+                    <div id="circuitImagePreview" class="circuit-image-preview hidden">
+                        <img id="circuitImageImg" src="" alt="Circuit image preview">
+                        <div class="circuit-image-actions">
+                            <button type="button" id="circuitImageReplaceBtn" class="input-action-btn" title="Replace image">🔄 Replace</button>
+                            <button type="button" id="circuitImageRemoveBtn" class="input-action-btn" title="Remove image">🗑️ Remove</button>
+                        </div>
+                    </div>
+                    <input type="file" id="circuitImageInput" accept="image/png,image/jpeg,image/webp" class="circuit-image-file-input" aria-label="Select circuit image file">
+                </div>
+                <div id="circuitImageStatus" class="help-text circuit-image-status hidden"></div>
+            </div>
         </div>
 
         <div id="truthTableSection" class="input-subsection hidden">
@@ -416,6 +441,88 @@
                 </div>
             </div>
             <div id="verification" class="verification-container"></div>
+        </section>
+
+        <!-- Interactive Waveform Playground -->
+        <section class="card waveform-playground-card">
+            <div class="section-heading">
+                <span class="section-number">13</span>
+                <div>
+                    <h2>Interactive Waveform Playground</h2>
+                    <p>Experiment with the solved Boolean function by configuring input signals over time.</p>
+                </div>
+            </div>
+            <div class="waveform-controls">
+                <div class="waveform-btn-group">
+                    <button type="button" id="waveformPlayBtn" class="waveform-ctrl-btn active" title="Play">▶ Play</button>
+                    <button type="button" id="waveformPauseBtn" class="waveform-ctrl-btn" title="Pause">⏸ Pause</button>
+                    <button type="button" id="waveformStopBtn" class="waveform-ctrl-btn" title="Stop & Reset">⏹ Reset</button>
+                    <button type="button" id="waveformStepBackBtn" class="waveform-ctrl-btn" title="Step Backward">⏮</button>
+                    <button type="button" id="waveformStepFwdBtn" class="waveform-ctrl-btn" title="Step Forward">⏭</button>
+                </div>
+                <div class="waveform-speed-control">
+                    <label for="waveformSpeed">Speed:</label>
+                    <input type="range" id="waveformSpeed" min="100" max="2000" value="500" step="100">
+                    <span id="waveformSpeedLabel">500ms</span>
+                </div>
+                <div class="waveform-zoom-control">
+                    <button type="button" id="waveformZoomIn" class="waveform-ctrl-btn" title="Zoom In">🔍+</button>
+                    <button type="button" id="waveformZoomOut" class="waveform-ctrl-btn" title="Zoom Out">🔍−</button>
+                </div>
+                <div class="waveform-steps-control">
+                    <label for="waveformSteps">Steps:</label>
+                    <select id="waveformSteps">
+                        <option value="8">8</option>
+                        <option value="16" selected>16</option>
+                        <option value="32">32</option>
+                        <option value="64">64</option>
+                    </select>
+                </div>
+            </div>
+            <div class="waveform-grid-editor">
+                <div id="waveformInputRows" class="waveform-input-rows"></div>
+            </div>
+            <div class="waveform-canvas-wrapper">
+                <canvas id="waveformCanvas" class="waveform-canvas" width="800" height="200"></canvas>
+            </div>
+            <div class="waveform-time-info">
+                <span>Time: <strong id="waveformTimeDisplay">0</strong></span>
+                <span>Period: <strong id="waveformPeriodDisplay">16</strong> steps</span>
+            </div>
+        </section>
+
+        <!-- Open in Circuit Playground -->
+        <section class="card" id="openInPlaygroundSection" style="display:none;">
+            <div class="section-heading">
+                <span class="section-number">🚀</span>
+                <div>
+                    <h2>Open in Logic Playground</h2>
+                    <p>Continue building and simulating this circuit interactively.</p>
+                </div>
+            </div>
+            <div class="playground-buttons">
+                <button type="button" id="openBasicBtn" class="playground-export-btn" data-circuit="basic">
+                    <span class="playground-export-icon">⚡</span>
+                    <div>
+                        <strong>Basic Gate Circuit</strong>
+                        <span>AND / OR / NOT implementation</span>
+                    </div>
+                </button>
+                <button type="button" id="openNandBtn" class="playground-export-btn" data-circuit="nand">
+                    <span class="playground-export-icon">🔲</span>
+                    <div>
+                        <strong>NAND-Only Circuit</strong>
+                        <span>Universal NAND gate implementation</span>
+                    </div>
+                </button>
+                <button type="button" id="openNorBtn" class="playground-export-btn" data-circuit="nor">
+                    <span class="playground-export-icon">🔳</span>
+                    <div>
+                        <strong>NOR-Only Circuit</strong>
+                        <span>Universal NOR gate implementation</span>
+                    </div>
+                </button>
+            </div>
         </section>
 
     </section>

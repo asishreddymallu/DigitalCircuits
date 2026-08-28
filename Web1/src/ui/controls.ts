@@ -142,7 +142,8 @@ export function updateInputInterface(): void {
         maxterms: "maxtermSection",
         dontCare: "dontCareSection",
         truthTable: "truthTableSection",
-        wordProblem: "wordProblemSection"
+        wordProblem: "wordProblemSection",
+        circuitImage: "circuitImageSection"
     };
 
     Object.entries(sections).forEach(([mode, id]) => {

@@ -188,7 +188,7 @@
                     </div>
                     <div class="shortcut-row">
                         <span class="shortcut-desc">Navigate Hub Pages</span>
-                        <div class="shortcut-keys"><kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>3</kbd></div>
+                        <div class="shortcut-keys"><kbd>Alt</kbd> + <kbd>1</kbd>–<kbd>4</kbd></div>
                     </div>
                 </div>
                 <div class="shortcuts-footer">
@@ -227,8 +227,8 @@
                 }
             } else if (e.key === "m" || e.key === "M") {
                 toggleSound();
-            } else if (e.altKey && (e.key === "1" || e.key === "2" || e.key === "3")) {
-                const urls = { "1": "/Web1/index.html", "2": "/Web2/index.html", "3": "/Web3/index.html" };
+            } else if (e.altKey && (e.key === "1" || e.key === "2" || e.key === "3" || e.key === "4")) {
+                const urls = { "1": "/Web1/index.html", "2": "/Web2/index.html", "3": "/Web3/index.html", "4": "/Web4/index.html" };
                 const isSub = window.location.pathname.includes("/Web");
                 const prefix = isSub ? ".." : ".";
                 window.location.href = prefix + urls[e.key];

@@ -19,6 +19,7 @@ import { renderCircuit } from "../circuits/renderer";
 import { generateKarnaughMap } from "../kmap/kmap";
 import { positionKarnaughOverlays } from "../kmap/overlays";
 import { setupProbePanels, toggleProbe } from "./probe";
+import { initWaveformPlayground, resetWaveform } from "./waveform";
 
 /* ------------------------------------------------------------------ */
 /* Clipboard                                                           */
@@ -176,6 +177,7 @@ export interface RenderCallbacks {
 
 /** Hide the results section and clear every output area. */
 export function clearResults(): void {
+    resetWaveform();
     byId<HTMLElement>("results").classList.add("hidden");
     maybeById("dontCareResults")?.classList.add("hidden");
 
@@ -271,6 +273,9 @@ export function renderResults(model: SolverModel, callbacks: RenderCallbacks = {
     byId<HTMLElement>("verification").replaceChildren(
         renderVerification(verified, model.variables.length, callbacks.onSound)
     );
+
+    // Initialize waveform playground
+    initWaveformPlayground(model.variables, model.simplifiedAst);
 
     const resultsSection = byId<HTMLElement>("results");
     resultsSection.classList.remove("hidden");

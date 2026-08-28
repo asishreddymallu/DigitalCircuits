@@ -11,6 +11,7 @@ Architecture:
 
 import json
 import os
+import re
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, HTTPException
@@ -23,14 +24,16 @@ from config import (
     MAX_PROBLEM_LENGTH,
     MAX_RETRIES,
     MAX_VARIABLES,
+    GEMINI_TIMEOUT_SECONDS,
 )
-from models import ProblemRequest
+from models import ProblemRequest, CircuitImageRequest
 from parser import parse_explicit_minterms
-from ai_solver import build_prompt, call_gemini, validate_variables
+from ai_solver import build_prompt, call_gemini, validate_variables, MODEL
 from boolean_engine import (
     generate_dont_cares,
     generate_minterms,
 )
+from google.genai import types as genai_types
 
 # ============================================================
 # INITIALIZATION
@@ -287,6 +290,186 @@ def solve_boolean(req: ProblemRequest):
             "conditions explicitly."
         ),
     )
+
+
+CIRCUIT_IMAGE_PROMPT = """
+You are an expert at analyzing digital logic circuit diagrams.
+
+Given an image of a circuit, identify:
+1. All input variables and their labels
+2. All output variables and their labels
+3. All logic gates (AND, OR, NOT, NAND, NOR, XOR, XNOR, BUFFER)
+4. The connections between gates
+5. The final Boolean expression for each output
+6. A confidence score (0.0 to 1.0) for your analysis
+
+Return ONLY valid JSON with this structure:
+{{
+    "variables": ["A", "B", "C"],
+    "outputs": ["F"],
+    "gates": [
+        {{
+            "id": "g1",
+            "type": "AND",
+            "inputs": ["A", "B"],
+            "output": "n1"
+        }}
+    ],
+    "connections": [
+        {{ "from": "A", "to": "g1", "port": 0 }}
+    ],
+    "booleanExpression": "A AND B",
+    "minterms": [3],
+    "dont_cares": [],
+    "confidence": 0.85
+}}
+
+Rules:
+- Variables should be single uppercase letters if visible, otherwise A, B, C, D...
+- If you cannot identify the circuit clearly, return low confidence
+- Minterms must be consistent with the Boolean expression
+- Do not guess if the image is unclear
+"""
+
+
+@app.post("/api/analyze-circuit-image")
+def analyze_circuit_image(req: CircuitImageRequest):
+    """Analyze a circuit image using Gemini vision."""
+    if not req.image.strip():
+        raise HTTPException(status_code=400, detail="image is required")
+
+    last_error = ""
+
+    for attempt in range(1 + MAX_RETRIES):
+        prompt = CIRCUIT_IMAGE_PROMPT
+        if last_error:
+            prompt += f"""
+
+PREVIOUS ATTEMPT FAILED:
+{last_error}
+Please fix the issue and try again.
+"""
+
+        try:
+            # Use Gemini with image input
+            response = client.models.generate_content(
+                model=MODEL,
+                contents=[
+                    genai_types.Content(
+                        role="user",
+                        parts=[
+                            genai_types.Part.from_text(text=prompt),
+                            genai_types.Part.from_bytes(
+                                data=_extract_image_bytes(req.image),
+                                mime_type=_detect_mime_type(req.image)
+                            )
+                        ]
+                    )
+                ],
+                config=genai_types.GenerateContentConfig(
+                    http_options=genai_types.HttpOptions(
+                        timeout=GEMINI_TIMEOUT_SECONDS * 1000,
+                    ),
+                    response_mime_type="application/json",
+                    thinking_config=genai_types.ThinkingConfig(thinking_level="MINIMAL"),
+                ),
+            )
+
+            if not response.text:
+                raise ValueError("Gemini returned empty response.")
+
+            result = json.loads(response.text)
+
+            # Validate basic structure
+            variables = result.get("variables") or []
+            minterms = result.get("minterms") or []
+            dont_cares = result.get("dont_cares") or []
+            expression = result.get("booleanExpression") or result.get("expression")
+            confidence = result.get("confidence", 0.5)
+
+            if not variables:
+                last_error = "No variables identified in the circuit."
+                if attempt < MAX_RETRIES:
+                    continue
+                raise HTTPException(status_code=502, detail=last_error)
+
+            # Validate variables
+            try:
+                validate_variables(variables)
+            except ValueError as e:
+                last_error = str(e)
+                if attempt < MAX_RETRIES:
+                    continue
+                raise HTTPException(status_code=502, detail=last_error)
+
+            if len(variables) > MAX_VARIABLES:
+                last_error = f"Too many variables ({len(variables)})."
+                if attempt < MAX_RETRIES:
+                    continue
+                raise HTTPException(status_code=502, detail=last_error)
+
+            # If expression provided, verify minterms against it
+            if expression and minterms:
+                try:
+                    calc_minterms = generate_minterms(variables, expression)
+                    if sorted(calc_minterms) != sorted(minterms):
+                        minterms = calc_minterms
+                except Exception:
+                    pass  # Keep AI-provided minterms if verification fails
+            elif expression and not minterms:
+                try:
+                    minterms = generate_minterms(variables, expression)
+                except Exception:
+                    last_error = f"Could not evaluate expression: {expression}"
+                    if attempt < MAX_RETRIES:
+                        continue
+
+            return {
+                "variables": variables,
+                "minterms": sorted(set(minterms)),
+                "dont_cares": sorted(set(dont_cares)),
+                "expression": expression,
+                "confidence": confidence,
+                "circuit": result.get("circuit"),
+            }
+
+        except json.JSONDecodeError:
+            last_error = "Gemini returned invalid JSON."
+            if attempt < MAX_RETRIES:
+                continue
+            raise HTTPException(status_code=502, detail=last_error)
+        except HTTPException:
+            raise
+        except Exception as e:
+            last_error = f"Analysis failed: {e}"
+            if attempt < MAX_RETRIES:
+                continue
+            raise HTTPException(status_code=502, detail=last_error)
+
+    raise HTTPException(
+        status_code=502,
+        detail="Could not analyze the circuit image after multiple attempts."
+    )
+
+
+def _extract_image_bytes(data_url: str) -> bytes:
+    """Extract raw bytes from a base64 data URL or plain base64 string."""
+    import base64
+    if "," in data_url:
+        # data:image/png;base64,xxxxx
+        header, b64data = data_url.split(",", 1)
+    else:
+        b64data = data_url
+    return base64.b64decode(b64data)
+
+
+def _detect_mime_type(data_url: str) -> str:
+    """Detect MIME type from a data URL."""
+    if data_url.startswith("data:"):
+        match = re.match(r"data:(image/[a-z]+);", data_url)
+        if match:
+            return match.group(1)
+    return "image/png"
 
 
 @app.get("/")

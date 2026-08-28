@@ -21,13 +21,14 @@
 
 ## Project Overview
 
-The Digital Circuits Suite is an educational web application for learning digital logic design. It consists of three independent front-end applications and a Python backend:
+The Digital Circuits Suite is an educational web application for learning digital logic design. It consists of four independent front-end applications and a Python backend:
 
 | Component | Purpose | URL Path |
 |-----------|---------|----------|
 | **Web1 — Boolean Logic Solver** | Input Boolean expressions (or word problems) → truth table → canonical SOP/POS → Quine-McCluskey minimization → Karnaugh map → AND/OR/NOT, NAND-only, and NOR-only circuits → verification → Verilog/C/LaTeX export. Live probe simulation on all three circuit variants. | `/Web1/` |
 | **Web2 — Combinational Circuits Simulator** | Interactive simulator for 18 standard combinational circuits (adders, subtractors, MUX, DEMUX, decoders, encoders, comparators). Toggle inputs, see SVG schematics update live, truth table highlighting, waveform timing diagram, ripple-carry animation, Verilog export. | `/Web2/` |
 | **Web3 — 7-Segment Display Simulator** | BCD-to-7-segment and hex-to-7-segment decoder. Interactive mode (click segments, toggle binary inputs, keyboard 0–F) and counter mode (automated clock). Karnaugh maps, Boolean expressions (QM-minimized), Verilog generation, decoder schematic, LED color picker, timing diagram. | `/Web3/` |
+| **Web4 — Digital Logic Playground** | Interactive drag-and-drop circuit design environment with 14 gate types, wire connections, live simulation, waveform timing diagrams, undo/redo, save/load/export, and keyboard shortcuts. | `/Web4/` |
 | **Backend** | FastAPI service for AI-powered Boolean problem solving. Accepts natural-language word problems, converts them to minterms via Gemini AI (with deterministic validation), or parses explicit Σm/Σd notation directly. | `https://digitalcircuits.onrender.com` |
 
 **Technology Stack:**
@@ -64,6 +65,9 @@ DigitalCircuits/
 │       │   ├── parser.ts         # Recursive-descent parser → AST
 │       │   ├── minimizer.ts      # Quine-McCluskey: prime implicants, minimum cover, SOP/POS
 │       │   └── formatter.ts      # AST → display string (postfix ', +, ^, juxtaposition)
+│       ├── circuit/
+│       │   ├── gates.ts          # Shared gate types, evaluation, metadata (used by Web1 & Web4)
+│       │   └── circuitGraph.ts   # Shared circuit graph model, serialization, expression derivation
 │       └── exporters/
 │           ├── verilog.ts        # AST → Verilog HDL module
 │           ├── c.ts              # AST → C/C++ function
@@ -134,6 +138,25 @@ DigitalCircuits/
 │       ├── circuit.ts            # Decoder schematic + wire helpers
 │       └── ui.ts                 # All UI logic: inputs, truth table, k-maps, counter, etc.
 │
+├── Web4/                         # Digital Logic Playground
+│   ├── index.html                # Main HTML (3-panel: palette, canvas, waveform)
+│   ├── style.css                 # Full UI stylesheet (dark + light themes)
+│   ├── script.js                 # ← Compiled output (DO NOT EDIT)
+│   ├── theme.js                  # Theme system (identical copy)
+│   ├── fx.js                     # Studio FX (identical copy)
+│   ├── README.md                 # ← Web4 documentation + user manual
+│   └── src/
+│       ├── main.ts               # Entry point: wires all modules, keyboard shortcuts
+│       ├── state.ts              # Application state management
+│       ├── types.ts              # Type definitions, gate sizes, port positions
+│       ├── simulator.ts          # Circuit simulation engine (topo-sort + evaluation)
+│       ├── renderer.ts           # SVG rendering: gates, wires, ports, signal values
+│       ├── toolbar.ts            # Gate palette and toolbar definitions
+│       ├── persistence.ts        # Save/load/export/import (localStorage + JSON)
+│       ├── waveform.ts           # Waveform timing diagram (Canvas 2D)
+│       └── ui/
+│           └── help.ts           # Help modal with keyboard shortcuts + user guide
+
 ├── Backend/                      # FastAPI AI Backend
 │   ├── backend.py                # Entry point: re-exports app from main.py
 │   ├── main.py                   # FastAPI routes, CORS, Gemini client, validation pipeline
@@ -165,7 +188,10 @@ DigitalCircuits/
 │   │   ├── constants.test.ts     # Constant-function edge cases
 │   │   ├── multiCharVars.test.ts # Multi-character variable name tests
 │   │   ├── solverCore.test.ts    # End-to-end solver tests
-│   │   └── property.test.ts      # Property-based fuzz tests
+│   │   ├── property.test.ts      # Property-based fuzz tests
+│   │   ├── circuitImage.test.ts  # Circuit image input tests (10 tests)
+│   │   ├── waveform.test.ts      # Waveform playground tests (12 tests)
+│   │   └── circuitGraph.test.ts  # Shared circuit model tests (21 tests)
 │   └── backend/
 │       ├── __init__.py
 │       ├── test_retry.py         # Gemini retry logic + explicit minterm tests
@@ -186,6 +212,10 @@ DigitalCircuits
 │   ├── Parser — Recursive-descent → AST (OR < XOR < AND < NOT)
 │   ├── Minimizer — Quine-McCluskey: prime implicants, minimum cover, SOP/POS
 │   └── Formatter — AST → display string with auto-separator
+│
+├── Shared Circuit Model (shared/ts/circuit/)
+│   ├── Gates — Gate type definitions, evaluation, metadata (Web1 & Web4)
+│   └── CircuitGraph — Circuit graph model, serialization, expression derivation
 │
 ├── Shared Code Exporters (shared/ts/exporters/)
 │   ├── Verilog — Fully-parenthesized AST → Verilog HDL module
@@ -1010,4 +1040,147 @@ uvicorn main:app --reload   # http://localhost:8000
 | **GitHub Pages path issues** | Ensure `index.html` files are at the correct paths. Theme parameter `?theme=dark` must survive navigation. |
 | **Render deployment failure** | Check `Backend/requirements.txt` is complete. Verify Python version compatibility. |
 | **Stale `script.js`** | Run `npm run build:web1` (or web2/web3). The committed `.js` file may be out of date with source `.ts`. |
-| **Shared scripts out of sync** | Run `npm run check:shared`. If drift detected, copy root `theme.js`/`fx.js` to Web1-3. |
+| **Shared scripts out of sync** | Run `npm run check:shared`. If drift detected, copy root `theme.js`/`fx.js` to Web1-4. |
+
+---
+
+## New Features (v2.2.0)
+
+### Feature 1: Circuit Image Input (Web1)
+
+Upload a circuit image (PNG, JPEG, WebP) to the Boolean Solver and have AI analyze it into a Boolean function.
+
+**Flow:**
+```
+Circuit Image → AI recognition → Structured circuit graph → Boolean function → Existing solver pipeline
+```
+
+**Files:**
+- `Web1/index.html` — Circuit Image upload section with drag-and-drop UI
+- `Web1/src/main.ts` — `initCircuitImageUpload()`, `runCircuitImage()`
+- `Web1/src/ai/booleanApi.ts` — `analyzeCircuitImage()`, `preprocessImage()`
+- `Backend/main.py` — `POST /api/analyze-circuit-image` endpoint
+- `Backend/models.py` — `CircuitImageRequest` model
+
+**Backend endpoint:** `POST /api/analyze-circuit-image`
+```json
+{"image": "data:image/png;base64,..."}
+```
+
+**AI output schema:**
+```json
+{
+    "variables": ["A", "B", "C"],
+    "minterms": [2, 3, 7],
+    "dont_cares": [],
+    "expression": "A'B + B·C",
+    "confidence": 0.85,
+    "circuit": { "gates": [...], "connections": [...] }
+}
+```
+
+### Feature 2: Interactive Waveform Playground (Web1)
+
+At the bottom of Web1 results, experiment with the solved Boolean function using configurable input signal patterns.
+
+**Features:**
+- Clickable grid editor for input patterns (toggle 0/1)
+- Canvas timing diagram showing inputs and output over time
+- Play/Pause/Stop/Step controls
+- Speed and zoom controls
+- Output F is computed from the actual Boolean logic
+- Automatically updates when input patterns change
+- Resets when a new function is solved
+
+**Files:**
+- `Web1/index.html` — Waveform playground section (card #13)
+- `Web1/src/ui/waveform.ts` — `initWaveformPlayground()`, `setupWaveformControls()`, `drawWaveform()`
+- `Web1/src/ui/results.ts` — Initializes waveform after solving
+- `Web1/style.css` — Waveform and grid editor styles
+
+### Feature 3: Digital Logic Playground (Web4)
+
+A new interactive circuit design environment with drag-and-drop gate placement, wire connections, live simulation, and more.
+
+**Architecture:**
+```
+Web4/
+├── index.html          # Main page with 3-panel layout
+├── style.css           # Full UI stylesheet
+├── script.js           # Compiled output
+├── theme.js            # Theme system (identical copy)
+├── fx.js               # Studio FX (identical copy)
+└── src/
+    ├── main.ts         # Entry point: wires all modules
+    ├── state.ts        # Application state
+    ├── types.ts        # Type definitions
+    ├── simulator.ts    # Circuit simulation engine
+    ├── renderer.ts     # SVG rendering for gates/wires
+    ├── toolbar.ts      # Gate palette and toolbar
+    ├── persistence.ts  # Save/load/export/import
+    └── waveform.ts     # Timing diagram panel
+```
+
+**Available gates:**
+INPUT, OUTPUT, CONST, CLOCK, SWITCH, LED, NOT, BUFFER, AND, OR, NAND, NOR, XOR, XNOR
+
+**Features:**
+- Drag-and-drop gate placement from palette
+- Click-to-add at canvas center
+- Wire connections between output and input ports
+- Orthogonal wire routing
+- Live signal propagation (deterministic simulation)
+- Signal value badges on wires
+- Waveform / oscilloscope panel
+- Save/Load (localStorage)
+- Export/Import JSON
+- Undo/Redo
+- Keyboard shortcuts (Delete, Ctrl+Z, Ctrl+S, V/W/D modes)
+- Zoom/Pan/Fit-to-screen
+- Grid snap
+- Responsive layout
+
+### Shared Circuit Model
+
+A new shared module `shared/ts/circuit/` provides circuit primitives used by both Web1 and Web4:
+
+- `shared/ts/circuit/gates.ts` — Gate types, evaluation, metadata
+- `shared/ts/circuit/circuitGraph.ts` — Circuit graph model, evaluation, serialization, expression derivation
+
+**Cross-tool interoperability:**
+- Web1-generated circuits can be opened in Web4
+- Web4-built circuits can be analyzed by Web1
+- Both tools share the same `GateType` and evaluation logic
+
+### Navigation
+
+Web4 has been added to the site navigation across all pages:
+- Root index.html — 4th project card
+- Web1/Web2/Web3 nav bars — 🎮 Logic Playground link
+- Web4 nav bar — Active state
+
+### New Tests
+
+| Test File | Tests | Coverage |
+|-----------|-------|----------|
+| `tests/unit/circuitImage.test.ts` | 10 | Circuit image input mode, validation, multi-gate circuits |
+| `tests/unit/waveform.test.ts` | 12 | Waveform computation, pattern generation, truth table equivalence |
+| `tests/unit/circuitGraph.test.ts` | 21 | Shared circuit model: nodes, connections, simulation, fan-out, serialization |
+
+**Total: 213 tests (170 original + 43 new) — all passing**
+
+### Build & Run
+
+```bash
+# Build all apps (including Web4)
+npm run build
+
+# Build Web4 only
+npm run build:web4
+
+# Run all tests
+npm test
+
+# Run backend
+cd Backend && cp .env.example .env && pip install -r requirements.txt && uvicorn main:app --reload
+```
