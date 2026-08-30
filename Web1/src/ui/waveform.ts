@@ -168,7 +168,7 @@ function drawWaveform(): void {
     const startX = 50;
     const graphWidth = w - startX - 20;
     const rowHeight = Math.min(28, Math.floor((h - 10) / signalNames.length));
-    const stepX = graphWidth / Math.max(1, state.stepCount - 1);
+    const stepX = (graphWidth / Math.max(1, state.stepCount - 1)) * state.zoomLevel;
 
     // Background grid
     ctx.strokeStyle = "rgba(255,255,255,0.04)";

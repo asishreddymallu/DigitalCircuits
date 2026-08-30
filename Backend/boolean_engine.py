@@ -17,7 +17,9 @@ def normalize_expression(expression: str) -> str:
     expression = re.sub(r"\bAND\b", " and ", expression, flags=re.IGNORECASE)
     expression = re.sub(r"\bOR\b", " or ", expression, flags=re.IGNORECASE)
     expression = re.sub(r"\bNOT\b", " not ", expression, flags=re.IGNORECASE)
-    return expression
+    # Collapse multiple spaces and strip leading/trailing whitespace
+    # that regex replacements can introduce (e.g. NOT at expression start).
+    return re.sub(r"\s+", " ", expression).strip()
 
 
 def evaluate_boolean_expression(

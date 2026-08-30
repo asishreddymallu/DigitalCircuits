@@ -661,8 +661,22 @@ function undo(): void {
                 // Restore full circuit from clear
                 state.nodes = (action.data.nodes as PlaygroundNode[]) || [];
                 state.wires = (action.data.wires as Wire[]) || [];
+                // Rebuild inputNodeIds and outputNodeIds from restored nodes
+                state.circuit.inputNodeIds = state.nodes
+                    .filter(n => SOURCE_TYPES.has(n.type) || TOGGLEABLE_TYPES.has(n.type))
+                    .map(n => n.id);
+                state.circuit.outputNodeIds = state.nodes
+                    .filter(n => n.type === "OUTPUT" || n.type === "LED")
+                    .map(n => n.id);
             } else if (action.data.node) {
-                state.nodes.push(action.data.node as PlaygroundNode);
+                const restoredNode = action.data.node as PlaygroundNode;
+                state.nodes.push(restoredNode);
+                if (SOURCE_TYPES.has(restoredNode.type) || TOGGLEABLE_TYPES.has(restoredNode.type)) {
+                    state.circuit.inputNodeIds.push(restoredNode.id);
+                }
+                if (restoredNode.type === "OUTPUT" || restoredNode.type === "LED") {
+                    state.circuit.outputNodeIds.push(restoredNode.id);
+                }
             }
             break;
         case "addWire":
@@ -703,7 +717,14 @@ function redo(): void {
     switch (action.type) {
         case "addNode":
             if (action.data.node) {
-                state.nodes.push(action.data.node as PlaygroundNode);
+                const restoredNode = action.data.node as PlaygroundNode;
+                state.nodes.push(restoredNode);
+                if (SOURCE_TYPES.has(restoredNode.type) || TOGGLEABLE_TYPES.has(restoredNode.type)) {
+                    state.circuit.inputNodeIds.push(restoredNode.id);
+                }
+                if (restoredNode.type === "OUTPUT" || restoredNode.type === "LED") {
+                    state.circuit.outputNodeIds.push(restoredNode.id);
+                }
             }
             break;
         case "removeNode":
@@ -713,8 +734,11 @@ function redo(): void {
                 state.circuit.inputNodeIds = [];
                 state.circuit.outputNodeIds = [];
             } else if (action.data.node) {
-                state.nodes = state.nodes.filter(n => n.id !== (action.data.node as PlaygroundNode).id);
-                state.wires = state.wires.filter(w => w.sourceNodeId !== (action.data.node as PlaygroundNode).id && w.targetNodeId !== (action.data.node as PlaygroundNode).id);
+                const removedNodeId = (action.data.node as PlaygroundNode).id;
+                state.nodes = state.nodes.filter(n => n.id !== removedNodeId);
+                state.wires = state.wires.filter(w => w.sourceNodeId !== removedNodeId && w.targetNodeId !== removedNodeId);
+                state.circuit.inputNodeIds = state.circuit.inputNodeIds.filter(id => id !== removedNodeId);
+                state.circuit.outputNodeIds = state.circuit.outputNodeIds.filter(id => id !== removedNodeId);
             }
             break;
         case "addWire":

@@ -242,6 +242,7 @@
       const right = parseAND(stream);
       if (right.kind === "xor" || right.kind === "and" || right.kind === "or") {
       }
+      void opToken;
       node = { kind: "xor", left: node, right };
     }
     return node;
@@ -985,9 +986,6 @@
     const dontCares = new Set(ci.dontCares.filter((d) => !ci.minterms.includes(d)));
     const sorted = [...new Set(ci.minterms)].sort((a, b) => a - b);
     validateIndices(sorted, ci.variables.length, "Minterm");
-    // For circuit-image input, deterministic minterms are the source of truth.
-    // Keep the AI expression for display only so expression parsing differences
-    // cannot create a false verification failure.
     const display = ci.expression || (sorted.length === 0 ? "0" : sorted.length === 1 << ci.variables.length ? "1" : sorted.map((m) => termToString(toPattern(m, ci.variables.length), ci.variables)).join(" + "));
     const originalAst = astFromMinterms(sorted, ci.variables);
     const originalDisplay = display;
@@ -2338,7 +2336,7 @@ bool ${functionName}(${args}) {
     const startX = 50;
     const graphWidth = w - startX - 20;
     const rowHeight = Math.min(28, Math.floor((h - 10) / signalNames.length));
-    const stepX = graphWidth / Math.max(1, state2.stepCount - 1);
+    const stepX = graphWidth / Math.max(1, state2.stepCount - 1) * state2.zoomLevel;
     ctx.strokeStyle = "rgba(255,255,255,0.04)";
     ctx.lineWidth = 1;
     for (let i = 0; i < state2.stepCount; i++) {

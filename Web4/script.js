@@ -973,6 +973,31 @@
     }
   }
 
+  // shared/ts/boolean/limits.ts
+  var LIMITS = {
+    /** Maximum number of distinct variables in one function. */
+    MAX_VARIABLES: 8,
+    /** Maximum characters accepted for a typed Boolean expression. */
+    MAX_EXPRESSION_LENGTH: 2e3,
+    /** Maximum characters accepted for a natural-language problem statement. */
+    MAX_PROBLEM_LENGTH: 4e3,
+    /** Maximum don't-care conditions accepted from the AI per request. */
+    MAX_DONT_CARE_CONDITIONS: 8,
+    /**
+     * Node budget for the exact-cover branch search in Quine-McCluskey.
+     * When exceeded, the solver finishes the cover greedily. The result stays
+     * logically equivalent (verified afterwards); only guaranteed minimality
+     * is relaxed. Typical 6-variable problems use far fewer nodes.
+     */
+    MINIMIZE_NODE_BUDGET: 2e5
+  };
+  var LimitError = class extends Error {
+    constructor(message) {
+      super(message);
+      this.name = "LimitError";
+    }
+  };
+
   // shared/ts/boolean/minimizer.ts
   function canCombine(a, b) {
     let diff = 0;
@@ -990,6 +1015,13 @@
       result += a[i] === b[i] ? a[i] : "-";
     }
     return result;
+  }
+  function patternCovers(pattern, minterm, variableCount) {
+    const bin = minterm.toString(2).padStart(variableCount, "0");
+    for (let i = 0; i < pattern.length; i++) {
+      if (pattern[i] !== "-" && pattern[i] !== bin[i]) return false;
+    }
+    return true;
   }
   function getPrimeImplicants(minterms, variableCount) {
     let groups = /* @__PURE__ */ new Map();
@@ -1031,6 +1063,109 @@
       groups = nextGroups;
     }
     return [...primes].map((pattern) => ({ pattern }));
+  }
+  function findMinimumCover(minterms, primes, variableCount, nodeBudget = LIMITS.MINIMIZE_NODE_BUDGET) {
+    if (minterms.length === 0 || primes.length === 0) return { cover: [], truncated: false };
+    const chart = primes.map(
+      (p) => minterms.map((m) => patternCovers(p.pattern, m, variableCount))
+    );
+    const essentialPrimes = /* @__PURE__ */ new Set();
+    const uncoveredMinterms = new Set(minterms.map((_, i) => i));
+    for (let c = 0; c < minterms.length; c++) {
+      const coveringPrimes = [];
+      for (let r = 0; r < primes.length; r++) {
+        if (chart[r][c]) coveringPrimes.push(r);
+      }
+      if (coveringPrimes.length === 1) {
+        const r = coveringPrimes[0];
+        essentialPrimes.add(r);
+        for (let col = 0; col < minterms.length; col++) {
+          if (chart[r][col]) uncoveredMinterms.delete(col);
+        }
+      }
+    }
+    if (uncoveredMinterms.size === 0) {
+      return { cover: [...essentialPrimes].map((i) => primes[i]), truncated: false };
+    }
+    const remainingPrimes = primes.map((_, i) => i).filter((i) => !essentialPrimes.has(i));
+    const remainingMinterms = [...uncoveredMinterms];
+    let bestCombination = null;
+    let nodesUsed = 0;
+    let truncated = false;
+    function search(uncovered, chosen) {
+      if (uncovered.length === 0) {
+        if (bestCombination === null || chosen.length < bestCombination.length) {
+          bestCombination = [...chosen];
+        }
+        return;
+      }
+      if (bestCombination !== null && chosen.length >= bestCombination.length) return;
+      if (++nodesUsed > nodeBudget) {
+        truncated = true;
+        return;
+      }
+      const targetMinterm = uncovered[0];
+      const covering = remainingPrimes.filter((p) => chart[p][targetMinterm] && !chosen.includes(p));
+      for (const p of covering) {
+        const newUncovered = uncovered.filter((m) => !chart[p][m]);
+        search(newUncovered, [...chosen, p]);
+      }
+    }
+    search(remainingMinterms, []);
+    let chosenIndices = /* @__PURE__ */ new Set([...essentialPrimes, ...bestCombination ?? []]);
+    let stillUncovered = truncated ? remainingMinterms.filter((mIdx) => ![...chosenIndices].some((r) => chart[r][mIdx])) : [];
+    if (truncated && stillUncovered.length > 0) {
+      while (stillUncovered.length > 0) {
+        let bestPrime = -1;
+        let bestGain = -1;
+        for (const r of remainingPrimes) {
+          if (chosenIndices.has(r)) continue;
+          const gain = stillUncovered.filter((mIdx) => chart[r][mIdx]).length;
+          if (gain > bestGain) {
+            bestGain = gain;
+            bestPrime = r;
+          }
+        }
+        if (bestPrime === -1 || bestGain <= 0) break;
+        chosenIndices.add(bestPrime);
+        stillUncovered = stillUncovered.filter((mIdx) => !chart[bestPrime][mIdx]);
+      }
+    }
+    return { cover: [...chosenIndices].map((i) => primes[i]), truncated };
+  }
+  function assertMinimizable(varCount, termCount) {
+    if (varCount > LIMITS.MAX_VARIABLES) {
+      throw new LimitError(
+        `${varCount} variables exceeds the supported maximum of ${LIMITS.MAX_VARIABLES}. Reduce the number of variables in this function.`
+      );
+    }
+    if (termCount > 1 << varCount) {
+      throw new LimitError(`Term list contains more entries than the ${varCount}-variable space allows.`);
+    }
+  }
+  function minimizeSOP(minterms, variables, dontCares, options) {
+    assertMinimizable(variables.length, minterms.length + (dontCares?.size ?? 0));
+    const varCount = variables.length;
+    if (minterms.length === 0) {
+      return { implicants: [], isConstant: true, constantValue: false, coverTruncated: false };
+    }
+    if (minterms.length + (dontCares?.size ?? 0) === 1 << varCount) {
+      return {
+        implicants: [{ pattern: "-".repeat(varCount) }],
+        isConstant: true,
+        constantValue: true,
+        coverTruncated: false
+      };
+    }
+    const allTerms = dontCares ? [.../* @__PURE__ */ new Set([...minterms, ...dontCares])] : minterms;
+    const primes = getPrimeImplicants(allTerms, varCount);
+    if (primes.length > 5e3) {
+      throw new LimitError(
+        `This function produced ${primes.length} prime implicants, which is too complex to minimize interactively.`
+      );
+    }
+    const { cover, truncated } = findMinimumCover(minterms, primes, varCount, options?.nodeBudget ?? LIMITS.MINIMIZE_NODE_BUDGET);
+    return { implicants: cover, isConstant: false, coverTruncated: truncated };
   }
 
   // Web1/src/circuits/circuitGraph.ts
@@ -1246,9 +1381,9 @@
           showError("All outputs are 1 \u2014 the circuit would be constant 1. Add at least one 0.");
           return;
         }
-        const implicants = getPrimeImplicants(minterms, vars.length);
+        const minimized = minimizeSOP(minterms, vars);
         resetCircuitIds();
-        const web1Circuit = buildBasicSOPCircuit(implicants, vars);
+        const web1Circuit = buildBasicSOPCircuit(minimized.implicants, vars);
         const shared = convertWeb1Circuit(web1Circuit);
         const w4 = importSharedToWeb4(shared);
         cleanup();
@@ -1906,8 +2041,17 @@
         if (action.data.isClearAll) {
           state.nodes = action.data.nodes || [];
           state.wires = action.data.wires || [];
+          state.circuit.inputNodeIds = state.nodes.filter((n) => SOURCE_TYPES.has(n.type) || TOGGLEABLE_TYPES.has(n.type)).map((n) => n.id);
+          state.circuit.outputNodeIds = state.nodes.filter((n) => n.type === "OUTPUT" || n.type === "LED").map((n) => n.id);
         } else if (action.data.node) {
-          state.nodes.push(action.data.node);
+          const restoredNode = action.data.node;
+          state.nodes.push(restoredNode);
+          if (SOURCE_TYPES.has(restoredNode.type) || TOGGLEABLE_TYPES.has(restoredNode.type)) {
+            state.circuit.inputNodeIds.push(restoredNode.id);
+          }
+          if (restoredNode.type === "OUTPUT" || restoredNode.type === "LED") {
+            state.circuit.outputNodeIds.push(restoredNode.id);
+          }
         }
         break;
       case "addWire":
@@ -1945,7 +2089,14 @@
     switch (action.type) {
       case "addNode":
         if (action.data.node) {
-          state.nodes.push(action.data.node);
+          const restoredNode = action.data.node;
+          state.nodes.push(restoredNode);
+          if (SOURCE_TYPES.has(restoredNode.type) || TOGGLEABLE_TYPES.has(restoredNode.type)) {
+            state.circuit.inputNodeIds.push(restoredNode.id);
+          }
+          if (restoredNode.type === "OUTPUT" || restoredNode.type === "LED") {
+            state.circuit.outputNodeIds.push(restoredNode.id);
+          }
         }
         break;
       case "removeNode":
@@ -1955,8 +2106,11 @@
           state.circuit.inputNodeIds = [];
           state.circuit.outputNodeIds = [];
         } else if (action.data.node) {
-          state.nodes = state.nodes.filter((n) => n.id !== action.data.node.id);
-          state.wires = state.wires.filter((w) => w.sourceNodeId !== action.data.node.id && w.targetNodeId !== action.data.node.id);
+          const removedNodeId = action.data.node.id;
+          state.nodes = state.nodes.filter((n) => n.id !== removedNodeId);
+          state.wires = state.wires.filter((w) => w.sourceNodeId !== removedNodeId && w.targetNodeId !== removedNodeId);
+          state.circuit.inputNodeIds = state.circuit.inputNodeIds.filter((id) => id !== removedNodeId);
+          state.circuit.outputNodeIds = state.circuit.outputNodeIds.filter((id) => id !== removedNodeId);
         }
         break;
       case "addWire":

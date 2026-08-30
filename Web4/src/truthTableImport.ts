@@ -5,7 +5,7 @@
  * SOP circuit in the playground.
  */
 
-import { getPrimeImplicants } from "../../shared/ts/boolean/minimizer";
+import { minimizeSOP } from "../../shared/ts/boolean/minimizer";
 import { buildBasicSOPCircuit, resetCircuitIds } from "../../Web1/src/circuits/circuitGraph";
 import { convertWeb1Circuit, importSharedToWeb4 } from "../../shared/ts/circuit/interop";
 import type { PlaygroundNode, Wire } from "./types";
@@ -197,10 +197,10 @@ export function showTruthTableDialog(): Promise<GeneratedCircuit | null> {
                 return;
             }
 
-            // Build Web1 circuit via prime implicants
-            const implicants = getPrimeImplicants(minterms, vars.length);
+            // Build Web1 circuit via minimum SOP cover
+            const minimized = minimizeSOP(minterms, vars);
             resetCircuitIds();
-            const web1Circuit = buildBasicSOPCircuit(implicants, vars);
+            const web1Circuit = buildBasicSOPCircuit(minimized.implicants, vars);
 
             // Convert to shared then to Web4
             const shared = convertWeb1Circuit(web1Circuit);
