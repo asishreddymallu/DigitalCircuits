@@ -1,11 +1,7 @@
-"""Gemini AI interaction: prompt building, API calls, and response validation.
-
-The LLM is used ONLY for natural language → structured Boolean problem.
-It is never trusted as the final authority — every result is validated
-deterministically by boolean_engine.py.
-"""
+"""Gemini interaction for natural-language Boolean problems."""
 
 import json
+import os
 import re
 
 from google import genai
@@ -13,16 +9,13 @@ from google.genai import types
 
 from config import GEMINI_TIMEOUT_SECONDS
 
-# Gemini model name.
-MODEL = "gemini-3.5-flash-lite"
+# Current Gemini 3.5 Flash-Lite model. Can be overridden with GEMINI_MODEL.
+MODEL = os.environ.get("GEMINI_MODEL", "gemini-3.5-flash-lite")
 
 
 def build_prompt(problem_statement: str, retry_error: str = "") -> str:
-    """
-    Construct the Gemini system prompt.
+    """Construct the Gemini prompt for natural-language Boolean problems."""
 
-    On retry, appends the verification error so the LLM can correct itself.
-    """
     retry_section = ""
     if retry_error:
         retry_section = f"""
@@ -47,8 +40,7 @@ expression representing exactly when the output is 1.
 
 The expression will be evaluated by Python for every possible input
 combination to generate the minterms. Therefore, correctness of the
-English interpretation is more important than making the expression
-short.
+English interpretation is more important than making the expression short.
 
 IMPORTANT:
 Do not overfit to any example in these instructions.
@@ -114,8 +106,7 @@ under a particular circumstance.
 Do NOT simply OR every sentence together.
 
 When a requirement says that one rule changes when another input or
-condition is active, split the cases and apply the correct rule to
-each case.
+condition is active, split the cases and apply the correct rule to each case.
 
 Generic example:
 
@@ -143,18 +134,9 @@ Do not assume A, B, C, D or these rules exist in the actual problem.
 4. CASE ANALYSIS
 ============================================================
 
-For complicated wording, internally divide the problem into the
-relevant cases.
+For complicated wording, internally divide the problem into the relevant cases.
 
-For example, a condition may depend on:
-
-- a mode being active/inactive
-- a signal being high/low
-- a special condition being present/absent
-- an override being active/inactive
-
-Determine the output condition for each relevant case and combine
-those cases.
+Determine the output condition for each relevant case and combine those cases.
 
 Only create cases that are actually required by the wording.
 Do not invent unnecessary cases.
@@ -175,8 +157,7 @@ If the problem contains an exception such as:
 then preserve B independently of X.
 
 Likewise, words such as "still", "except", "but", "however",
-"regardless", and "irrespective" can indicate that a previous rule
-has an exception.
+"regardless", and "irrespective" can indicate that a previous rule has an exception.
 
 ============================================================
 6. COUNTING CONDITIONS
@@ -236,8 +217,8 @@ Do not silently reverse or reinterpret variable meanings.
 8. COMBINE THE RULES
 ============================================================
 
-After translating the individual requirements and resolving all
-conditions, construct ONE Boolean expression for the output.
+After translating the individual requirements and resolving all conditions,
+construct ONE Boolean expression for the output.
 
 The expression must describe the complete truth condition.
 
@@ -252,123 +233,70 @@ Python will evaluate the expression for all input combinations.
 9. SELF-CHECK
 ============================================================
 
-Before returning the expression, check it against the original
-English problem.
+Before returning the expression, check it against the original English problem.
 
 Verify:
 1. Every activation condition is represented.
 2. Every restriction is enforced.
-3. Conditional rules apply only in their stated cases.
-4. Overrides affect only what they are stated to suppress.
-5. Explicit exceptions are preserved.
-6. No unstated assumptions were introduced.
-7. No valid condition was omitted.
-8. The variable names and variable order are correct.
-
-For complicated problems, mentally test representative combinations,
-especially boundary cases where two or more rules overlap.
+3. Every exception is preserved.
+4. The variable meanings are not reversed.
+5. No unstated assumptions were introduced.
 
 ============================================================
-10. DON'T-CARE CONDITIONS
+10. RESPONSE
 ============================================================
 
-Only return don't-care conditions if the problem explicitly states
-that certain combinations are impossible, unused, irrelevant, or
-don't-care.
+Return only the structured JSON requested by the API schema.
+Do not include explanations outside the JSON.
 
-Otherwise return an empty list.
+Problem:
+{problem_statement}
 
-============================================================
-11. OUTPUT FORMAT
-============================================================
-
-Return ONLY valid JSON.
-
-Use exactly this structure:
-
-{{
-    "variables": ["A", "B", "C"],
-    "expression": "((A AND B) OR C)",
-    "dont_care_conditions": [],
-    "variable_descriptions": [
-        {{
-            "letter": "A",
-            "description": "short description"
-        }},
-        {{
-            "letter": "B",
-            "description": "short description"
-        }},
-        {{
-            "letter": "C",
-            "description": "short description"
-        }}
-    ]
-}}
-
-Do not return Markdown.
-Do not return explanations outside the JSON.
 {retry_section}
-============================================================
-PROBLEM TO SOLVE
-============================================================
-
-{problem_statement.strip()}
 """
 
 
-def call_gemini(client, prompt: str) -> dict:
-    """
-    Call Gemini with structured JSON output schema.
+def call_gemini(client: genai.Client, prompt: str) -> dict:
+    """Call Gemini and return validated JSON as a Python dictionary."""
 
-    Uses response_mime_type and response_schema to enforce
-    structured output at the API level.
-    """
     config = types.GenerateContentConfig(
         http_options=types.HttpOptions(
-            timeout=GEMINI_TIMEOUT_SECONDS * 1000,  # milliseconds
-        ),
-        thinking_config=types.ThinkingConfig(
-            thinking_level="MINIMAL"
+            timeout=GEMINI_TIMEOUT_SECONDS * 1000,
         ),
         response_mime_type="application/json",
-        response_schema=genai.types.Schema(
-            type=genai.types.Type.OBJECT,
-            properties={
-                "variables": genai.types.Schema(
-                    type=genai.types.Type.ARRAY,
-                    items=genai.types.Schema(type=genai.types.Type.STRING),
-                ),
-                "expression": genai.types.Schema(
-                    type=genai.types.Type.STRING,
-                ),
-                "dont_care_conditions": genai.types.Schema(
-                    type=genai.types.Type.ARRAY,
-                    items=genai.types.Schema(type=genai.types.Type.STRING),
-                ),
-                "variable_descriptions": genai.types.Schema(
-                    type=genai.types.Type.ARRAY,
-                    items=genai.types.Schema(
-                        type=genai.types.Type.OBJECT,
-                        properties={
-                            "letter": genai.types.Schema(
-                                type=genai.types.Type.STRING,
-                            ),
-                            "description": genai.types.Schema(
-                                type=genai.types.Type.STRING,
-                            ),
+        response_schema={
+            "type": "object",
+            "properties": {
+                "variables": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "expression": {
+                    "type": "string",
+                },
+                "dont_care_conditions": {
+                    "type": "array",
+                    "items": {"type": "string"},
+                },
+                "variable_descriptions": {
+                    "type": "array",
+                    "items": {
+                        "type": "object",
+                        "properties": {
+                            "letter": {"type": "string"},
+                            "description": {"type": "string"},
                         },
-                        required=["letter", "description"],
-                    ),
-                ),
+                        "required": ["letter", "description"],
+                    },
+                },
             },
-            required=[
+            "required": [
                 "variables",
                 "expression",
                 "dont_care_conditions",
                 "variable_descriptions",
             ],
-        ),
+        },
     )
 
     response = client.models.generate_content(
@@ -384,14 +312,8 @@ def call_gemini(client, prompt: str) -> dict:
 
 
 def validate_variables(variables: list[str]) -> None:
-    """
-    Validate variable names returned by Gemini.
+    """Validate variable names returned by Gemini."""
 
-    Rules:
-    - Must not be empty.
-    - Must not have duplicates.
-    - Must match [A-Za-z][A-Za-z0-9_]*.
-    """
     if not variables:
         raise ValueError("No variables were identified.")
 
@@ -399,5 +321,7 @@ def validate_variables(variables: list[str]) -> None:
         raise ValueError("Duplicate variables returned.")
 
     for var in variables:
+        if not isinstance(var, str):
+            raise ValueError("Variable names must be strings.")
         if not re.fullmatch(r"[A-Za-z][A-Za-z0-9_]*", var):
             raise ValueError(f"Invalid variable name: {var}")

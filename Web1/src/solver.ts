@@ -349,28 +349,15 @@ function fromCircuitImage(ci: { variables: string[]; minterms: number[]; dontCar
     const sorted = [...new Set(ci.minterms)].sort((a, b) => a - b);
     validateIndices(sorted, ci.variables.length, "Minterm");
 
-    // If an expression was provided, try to use it for display
+    // The backend's minterms are the deterministic source of truth.
+    // The AI expression is display-only so a formatting/parse discrepancy
+    // cannot cause a false verification failure.
     const display = ci.expression || (sorted.length === 0 ? "0"
         : sorted.length === (1 << ci.variables.length) ? "1"
             : sorted.map(m => termToString(toPattern(m, ci.variables.length), ci.variables)).join(" + "));
 
-    // Try to parse the expression if available
-    let originalAst: AstNode;
-    let originalDisplay: string;
-    if (ci.expression) {
-        try {
-            const parsed = parseExpression(ci.expression);
-            originalAst = parsed.ast;
-            originalDisplay = ci.expression;
-        } catch {
-            // Fall back to minterm-based AST
-            originalAst = astFromMinterms(sorted, ci.variables);
-            originalDisplay = display;
-        }
-    } else {
-        originalAst = astFromMinterms(sorted, ci.variables);
-        originalDisplay = display;
-    }
+    const originalAst: AstNode = astFromMinterms(sorted, ci.variables);
+    const originalDisplay = display;
 
     return finish(
         "circuitImage",

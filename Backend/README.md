@@ -141,10 +141,6 @@ Path 2: AI Solver (with retry loop)
     │
     ├── generate_dont_cares(variables, dont_care_conditions)
     │
-    ├── Verification:
-    │   ├── Constant-0 check (all zeros → retry)
-    │   └── Constant-1 check (all ones with 3+ vars → retry)
-    │
     ├── Success → Return {variables, minterms, dont_cares, variable_descriptions}
     │
     └── Failure → Retry with error context (1 retry max)
@@ -275,15 +271,11 @@ Natural Language
    Don't-Care Generation
         └── Evaluate each don't-care condition
         ↓
-   Verification
-        ├── Constant-0: minterms empty + don't-cares empty → retry
-        └── Constant-1: all minterms + no don't-cares + 3+ vars → retry
-        ↓
    Frontend
         └── {variables, minterms, dont_cares, variable_descriptions}
 ```
 
-**Deterministic parts:** Variable validation, expression evaluation, minterm generation, don't-care generation, constant detection.
+**Deterministic parts:** Variable validation, expression evaluation, minterm generation, and don't-care generation. Constant-0 and constant-1 functions are valid Boolean functions and are returned normally.
 
 **AI-dependent parts:** Natural language → variable identification, expression construction, don't-care identification.
 
@@ -291,10 +283,8 @@ Natural Language
 1. Variable validation (regex, dedup, max count)
 2. Expression parseability check (Python AST)
 3. Exhaustive minterm verification (2^n evaluation)
-4. Constant-0 detection (all zeros = suspicious)
-5. Constant-1 detection (all ones with 3+ vars = suspicious)
-6. Retry with error context (1 retry)
-7. Input length limits (problem, expression, variables, don't-cares)
+4. Retry with error context (1 retry)
+5. Input length limits (problem, expression, variables, don't-cares)
 
 **Missing safeguards:**
 - No semantic check that the expression matches the English problem
@@ -311,7 +301,7 @@ Natural Language
 
 ### Q: What happens when Gemini gives a wrong answer?
 
-**A:** The backend detects wrong answers through deterministic validation. If the expression evaluates to 0 for all inputs (constant-0) or 1 for all inputs (constant-1 with 3+ variables), it retries with the error appended to the prompt. The retry gives Gemini a chance to correct itself. If the retry also fails, it returns a 502 error.
+**A:** The backend validates that Gemini's response has valid variables and a safe, parseable Boolean expression, then evaluates it exhaustively. Constant-0 and constant-1 are valid functions, so they are returned rather than treated as errors. The backend retries malformed or otherwise invalid AI responses once with the validation error appended to the prompt.
 
 ### Q: How is the Boolean expression evaluated safely?
 
@@ -323,7 +313,7 @@ Natural Language
 
 ### Q: How does the retry mechanism work?
 
-**A:** The main solver loop in `main.py` runs up to `MAX_RETRIES + 1` attempts (default: 2 total). On each failure (constant-0, constant-1, bad variables, missing expression, evaluation error), the error message is saved and passed to `build_prompt(retry_error=...)`. The retry prompt includes a "PREVIOUS ATTEMPT FAILED" section with the specific error.
+**A:** The main solver loop in `main.py` runs up to `MAX_RETRIES + 1` attempts (default: 2 total). On each failure (bad variables, missing expression, invalid JSON, or evaluation error), the error message is saved and passed to `build_prompt(retry_error=...)`. The retry prompt includes a "PREVIOUS ATTEMPT FAILED" section with the specific error.
 
 ### Q: What model does Gemini use?
 
@@ -358,5 +348,3 @@ Natural Language
 | CORS config | `Backend/main.py` | `CORSMiddleware` |
 | Gemini client init | `Backend/main.py` | `genai.Client(api_key=...)` |
 | Retry loop | `Backend/main.py` | `for attempt in range(1 + MAX_RETRIES)` |
-| Constant-0 check | `Backend/main.py` | Inside `solve_boolean()` |
-| Constant-1 check | `Backend/main.py` | Inside `solve_boolean()` |

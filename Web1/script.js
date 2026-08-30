@@ -985,22 +985,12 @@
     const dontCares = new Set(ci.dontCares.filter((d) => !ci.minterms.includes(d)));
     const sorted = [...new Set(ci.minterms)].sort((a, b) => a - b);
     validateIndices(sorted, ci.variables.length, "Minterm");
+    // For circuit-image input, deterministic minterms are the source of truth.
+    // Keep the AI expression for display only so expression parsing differences
+    // cannot create a false verification failure.
     const display = ci.expression || (sorted.length === 0 ? "0" : sorted.length === 1 << ci.variables.length ? "1" : sorted.map((m) => termToString(toPattern(m, ci.variables.length), ci.variables)).join(" + "));
-    let originalAst;
-    let originalDisplay;
-    if (ci.expression) {
-      try {
-        const parsed = parseExpression(ci.expression);
-        originalAst = parsed.ast;
-        originalDisplay = ci.expression;
-      } catch {
-        originalAst = astFromMinterms(sorted, ci.variables);
-        originalDisplay = display;
-      }
-    } else {
-      originalAst = astFromMinterms(sorted, ci.variables);
-      originalDisplay = display;
-    }
+    const originalAst = astFromMinterms(sorted, ci.variables);
+    const originalDisplay = display;
     return finish(
       "circuitImage",
       ci.variables,
@@ -1107,7 +1097,15 @@
         let detail = `Request failed (${response.status})`;
         try {
           const body = await response.json();
-          if (body && typeof body.detail === "string") detail = body.detail;
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          } else if (body && body.detail && typeof body.detail === "object") {
+            const d = body.detail;
+            if (typeof d.message === "string") detail = d.message;
+            else if (typeof d.error === "string") detail = d.error;
+            else if (typeof d.reason === "string") detail = d.reason;
+            else detail = JSON.stringify(d);
+          }
         } catch {
         }
         throw new ApiError(detail);
@@ -1156,7 +1154,15 @@
         let detail = `Request failed (${response.status})`;
         try {
           const body = await response.json();
-          if (body && typeof body.detail === "string") detail = body.detail;
+          if (body && typeof body.detail === "string") {
+            detail = body.detail;
+          } else if (body && body.detail && typeof body.detail === "object") {
+            const d = body.detail;
+            if (typeof d.message === "string") detail = d.message;
+            else if (typeof d.error === "string") detail = d.error;
+            else if (typeof d.reason === "string") detail = d.reason;
+            else detail = JSON.stringify(d);
+          }
         } catch {
         }
         throw new ApiError(detail);

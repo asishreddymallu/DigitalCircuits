@@ -103,7 +103,15 @@ export async function analyzeCircuitImage(
             let detail = `Request failed (${response.status})`;
             try {
                 const body = await response.json();
-                if (body && typeof body.detail === "string") detail = body.detail;
+                if (body && typeof body.detail === "string") {
+                    detail = body.detail;
+                } else if (body && body.detail && typeof body.detail === "object") {
+                    const d = body.detail;
+                    if (typeof d.message === "string") detail = d.message;
+                    else if (typeof d.error === "string") detail = d.error;
+                    else if (typeof d.reason === "string") detail = d.reason;
+                    else detail = JSON.stringify(d);
+                }
             } catch { /* keep default */ }
             throw new ApiError(detail);
         }
@@ -161,7 +169,15 @@ export async function fetchMintermsFromProblem(
             let detail = `Request failed (${response.status})`;
             try {
                 const body = await response.json();
-                if (body && typeof body.detail === "string") detail = body.detail;
+                if (body && typeof body.detail === "string") {
+                    detail = body.detail;
+                } else if (body && body.detail && typeof body.detail === "object") {
+                    const d = body.detail;
+                    if (typeof d.message === "string") detail = d.message;
+                    else if (typeof d.error === "string") detail = d.error;
+                    else if (typeof d.reason === "string") detail = d.reason;
+                    else detail = JSON.stringify(d);
+                }
             } catch {
                 // keep default message
             }

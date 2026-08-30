@@ -3,8 +3,7 @@ Tests for the Boolean Logic AI Backend retry logic.
 
 These tests mock the Gemini client to verify:
 - Successful first-attempt responses
-- Retry on constant-0 (all zeros) expressions
-- Retry on constant-1 (always true) expressions
+- Acceptance of valid constant-0 and constant-1 expressions
 - Retry on variable validation failures
 - Retry on missing expressions
 - Retry on unparseable expressions
@@ -153,16 +152,13 @@ class TestSuccessfulFirstAttempt:
 
 
 # ============================================================
-# RETRY: Constant-0 result (all zeros)
+# CONSTANT RESULTS
 # ============================================================
 
-class TestRetryConstantZero:
-    """When the expression evaluates to 0 for all inputs,
-    the backend should retry once, then fail if the retry also fails."""
+class TestConstantZero:
+    """A constant-zero function is valid Boolean logic and must be returned."""
 
-    def test_constant_zero_retries_once(self):
-        """First attempt: expression "A AND (NOT A)" → always 0.
-        Second attempt: also constant 0 → should fail after retry."""
+    def test_constant_zero_is_accepted(self):
         zero_resp = mock_gemini_response(
             variables=["A"],
             expression="(A AND (NOT A))",
@@ -171,60 +167,18 @@ class TestRetryConstantZero:
             resp = client.post("/api/solve-boolean", json={
                 "problem_statement": "Output is 1 when A is high."
             })
-            # Should retry once (2 total calls), then fail
-            assert mock_call.call_count == 2
-            assert resp.status_code == 502
-            assert "0 for all" in resp.json()["detail"]
-
-    def test_constant_zero_succeeds_on_retry(self):
-        """First attempt: constant 0. Second attempt: correct expression."""
-        zero_resp = mock_gemini_response(
-            variables=["A"],
-            expression="(A AND (NOT A))",
-        )
-        correct_resp = mock_gemini_response(
-            variables=["A"],
-            expression="A",
-        )
-        with patch(PATCH_TARGET, side_effect=[zero_resp, correct_resp]) as mock_call:
-            resp = client.post("/api/solve-boolean", json={
-                "problem_statement": "Output is 1 when A is high."
-            })
-            assert mock_call.call_count == 2
+            assert mock_call.call_count == 1
             assert resp.status_code == 200
-            assert resp.json()["minterms"] == [1]
-
-    def test_retry_prompt_includes_error(self):
-        """The second call's prompt should contain the error from the first."""
-        zero_resp = mock_gemini_response(
-            variables=["A", "B"],
-            expression="((A AND (NOT A)) AND B)",
-        )
-        correct_resp = mock_gemini_response(
-            variables=["A", "B"],
-            expression="(A AND B)",
-        )
-        with patch(PATCH_TARGET, side_effect=[zero_resp, correct_resp]) as mock_call:
-            resp = client.post("/api/solve-boolean", json={
-                "problem_statement": "A and B both must be 1."
-            })
-            assert resp.status_code == 200
-            # The second prompt should contain retry error context
-            second_prompt = mock_call.call_args_list[1][0][1]  # index 1 = prompt (0 = client)
-            assert "PREVIOUS ATTEMPT FAILED" in second_prompt
-            assert "0 for all" in second_prompt
-
+            assert resp.json()["minterms"] == []
 
 # ============================================================
-# RETRY: Constant-1 result (always true, 3+ variables)
+# CONSTANT-1 RESULT (always true)
 # ============================================================
 
-class TestRetryConstantOne:
-    """When the expression is always 1 for 3+ variables with no don't-cares,
-    the backend should retry once."""
+class TestConstantOne:
+    """A constant-one function is valid Boolean logic and must be returned."""
 
-    def test_constant_one_retries_once(self):
-        """Expression always true → should retry, then fail."""
+    def test_constant_one_is_accepted(self):
         one_resp = mock_gemini_response(
             variables=["A", "B", "C"],
             expression="((A OR (NOT A)) AND (B OR (NOT B)))",
@@ -233,27 +187,9 @@ class TestRetryConstantOne:
             resp = client.post("/api/solve-boolean", json={
                 "problem_statement": "When at least two of A, B, C are 1."
             })
-            assert mock_call.call_count == 2
-            assert resp.status_code == 502
-            assert "always be 1" in resp.json()["detail"]
-
-    def test_constant_one_succeeds_on_retry(self):
-        one_resp = mock_gemini_response(
-            variables=["A", "B", "C"],
-            expression="((A OR (NOT A)) AND (B OR (NOT B)))",
-        )
-        correct_resp = mock_gemini_response(
-            variables=["A", "B", "C"],
-            expression="((A AND B) OR (A AND C) OR (B AND C))",
-        )
-        with patch(PATCH_TARGET, side_effect=[one_resp, correct_resp]) as mock_call:
-            resp = client.post("/api/solve-boolean", json={
-                "problem_statement": "At least two of A, B, C are required."
-            })
-            assert mock_call.call_count == 2
+            assert mock_call.call_count == 1
             assert resp.status_code == 200
-            # Majority: minterms 3,5,6,7
-            assert sorted(resp.json()["minterms"]) == [3, 5, 6, 7]
+            assert resp.json()["minterms"] == list(range(8))
 
 
 # ============================================================
@@ -366,12 +302,12 @@ class TestImmediateFailureNetworkError:
             assert resp.status_code == 502
             assert "Gemini call failed" in resp.json()["detail"]
 
-    def test_invalid_json_no_retry(self):
+    def test_invalid_json_retries_once(self):
         with patch(PATCH_TARGET, side_effect=json.JSONDecodeError("err", "", 0)) as mock_call:
             resp = client.post("/api/solve-boolean", json={
                 "problem_statement": "When A is high."
             })
-            assert mock_call.call_count == 1
+            assert mock_call.call_count == 2
             assert resp.status_code == 502
             assert "invalid JSON" in resp.json()["detail"]
 
@@ -386,7 +322,7 @@ class TestBuildPrompt:
     def test_no_retry_error(self):
         prompt = build_prompt("When A is high.", retry_error="")
         assert "PREVIOUS ATTEMPT FAILED" not in prompt
-        assert "PROBLEM TO SOLVE" in prompt
+        assert "Problem:" in prompt
 
     def test_with_retry_error(self):
         error = "The expression evaluated to 0 for all combinations."
