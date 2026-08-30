@@ -2,7 +2,7 @@
 
 from typing import Literal
 
-from pydantic import BaseModel, ConfigDict, Field
+from pydantic import BaseModel, Field
 
 
 class ProblemRequest(BaseModel):
@@ -36,8 +36,6 @@ GateType = Literal[
 class CircuitGate(BaseModel):
     """One logic gate detected in the circuit image."""
 
-    model_config = ConfigDict(extra="forbid")
-
     id: str = Field(min_length=1, max_length=64)
     type: GateType
     inputs: list[str] = Field(default_factory=list)
@@ -46,8 +44,6 @@ class CircuitGate(BaseModel):
 
 class CircuitConnection(BaseModel):
     """A visual connection from a signal to a gate input port."""
-
-    model_config = ConfigDict(extra="forbid")
 
     from_signal: str = Field(min_length=1, max_length=64)
     to_gate: str = Field(min_length=1, max_length=64)
@@ -61,8 +57,6 @@ class CircuitAnalysis(BaseModel):
     minterms or a Boolean expression; those are generated deterministically
     by the Python backend after graph validation.
     """
-
-    model_config = ConfigDict(extra="forbid")
 
     variables: list[str] = Field(default_factory=list)
     outputs: list[str] = Field(default_factory=list)
