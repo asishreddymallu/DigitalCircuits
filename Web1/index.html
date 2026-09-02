@@ -72,6 +72,8 @@
                 <option value="dontCare">Minterms + Don't Cares (Σm + d)</option>
                 <option value="truthTable">Truth Table</option>
                 <option value="wordProblem">Word Problem (AI)</option>
+                <option value="kmapInput">Karnaugh Map</option>
+                <option value="timingImage">Timing Diagram (AI)</option>
                 <option value="circuitImage">Circuit Image (AI)</option>
             </select>
         </div>
@@ -172,6 +174,52 @@
         </div>
 
         <!-- Circuit Image Input -->
+        <!-- Karnaugh Map Input -->
+        <div id="kmapInputSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label for="kmapInputVariables">Number of Variables</label>
+                <select id="kmapInputVariables">
+                    <option value="2">2 (A, B)</option>
+                    <option value="3" selected>3 (A, B, C)</option>
+                    <option value="4">4 (A, B, C, D)</option>
+                </select>
+            </div>
+            <div class="form-group">
+                <label>Click cells to cycle: 0 → 1 → X → 0</label>
+                <div id="kmapInputGrid" class="kmap-input-grid"></div>
+                <div class="help-text">
+                    Click each cell to set the output value. <strong>0</strong> = F=0, <strong>1</strong> = F=1, <strong>X</strong> = Don't care.
+                    Cell labels show the minterm index in Gray code order.
+                </div>
+            </div>
+        </div>
+
+        <!-- Timing Diagram Image Input -->
+        <div id="timingImageSection" class="input-subsection hidden">
+            <div class="form-group">
+                <label>Upload Timing Diagram Image</label>
+                <div id="timingImageDropZone" class="circuit-image-drop-zone" role="button" tabindex="0" aria-label="Upload timing diagram image">
+                    <div id="timingImagePlaceholder" class="circuit-image-placeholder">
+                        <span class="circuit-image-icon">📊</span>
+                        <span class="circuit-image-text">Drag & drop a timing diagram here</span>
+                        <span class="circuit-image-subtext">or click to browse • PNG, JPEG, WebP supported</span>
+                    </div>
+                    <div id="timingImagePreview" class="circuit-image-preview hidden">
+                        <img id="timingImageImg" src="" alt="Timing diagram preview">
+                        <div class="circuit-image-actions">
+                            <button type="button" id="timingImageReplaceBtn" class="input-action-btn" title="Replace image">🔄 Replace</button>
+                            <button type="button" id="timingImageRemoveBtn" class="input-action-btn" title="Remove image">🗑️ Remove</button>
+                        </div>
+                    </div>
+                    <input type="file" id="timingImageInput" accept="image/png,image/jpeg,image/webp" class="circuit-image-file-input" aria-label="Select timing diagram image file">
+                </div>
+                <div id="timingImageStatus" class="help-text circuit-image-status hidden"></div>
+                <div class="help-text">
+                    Upload an image of a timing diagram. The AI will extract the input/output waveforms and apply them to the solved Boolean function.
+                </div>
+            </div>
+        </div>
+
         <div id="circuitImageSection" class="input-subsection hidden">
             <div class="form-group">
                 <label>Upload Circuit Image</label>
@@ -206,6 +254,21 @@
                 </select>
             </div>
             <div id="userTruthTable" class="truth-table-input"></div>
+            <div class="truth-table-io">
+                <div class="form-group" style="flex:1;">
+                    <label for="truthTablePaste">Paste Truth Table</label>
+                    <textarea id="truthTablePaste" rows="4" placeholder="Paste CSV, tab-separated, or space-separated truth table.&#10;Example: A,B,F&#10;0,0,1&#10;0,1,0&#10;1,0,0&#10;1,1,1"></textarea>
+                    <div class="help-text">
+                        Format: one row per line, values separated by commas/tabs/spaces. Values: <code>0</code>, <code>1</code>, <code>X</code> (don't care). Header row optional.
+                    </div>
+                </div>
+                <div class="truth-table-actions">
+                    <button type="button" id="parseTruthTablePasteBtn" class="input-action-btn">📋 Parse Pasted Table</button>
+                    <label for="truthTableFileInput" class="input-action-btn" style="cursor:pointer;">📁 Upload CSV</label>
+                    <input type="file" id="truthTableFileInput" accept=".csv,.txt,.tsv" style="display:none;" aria-label="Upload truth table file">
+                </div>
+                <div id="truthTablePasteStatus" class="help-text hidden"></div>
+            </div>
         </div>
 
         <button id="solveButton" class="solve-button" type="button" aria-label="Solve Boolean function">
@@ -289,25 +352,53 @@
             </section>
         </div>
 
-        <!-- Simplified Expression -->
-        <section class="card simplified-card">
+        <!-- Simplified Expressions (SOP + POS) -->
+        <div style="display:grid; grid-template-columns:repeat(auto-fit, minmax(300px, 1fr)); gap:20px;">
+            <section class="card simplified-card">
+                <div class="section-heading">
+                    <span class="section-number">6a</span>
+                    <div>
+                        <h2>Simplified SOP</h2>
+                        <p>Minimum Sum-of-Products from Quine-McCluskey minimization.</p>
+                    </div>
+                </div>
+                <div class="expression-row">
+                    <div id="simplifiedExpression" class="expression-box simplified-expression"></div>
+                    <button type="button" class="copy-btn" title="Copy simplified SOP">📋 Copy</button>
+                </div>
+            </section>
+
+            <section class="card simplified-card">
+                <div class="section-heading">
+                    <span class="section-number">6b</span>
+                    <div>
+                        <h2>Simplified POS</h2>
+                        <p>Minimum Product-of-Sums from Quine-McCluskey minimization.</p>
+                    </div>
+                </div>
+                <div class="expression-row">
+                    <div id="simplifiedPOS" class="expression-box simplified-expression"></div>
+                    <button type="button" class="copy-btn" title="Copy simplified POS">📋 Copy</button>
+                </div>
+            </section>
+        </div>
+
+        <!-- Step-by-Step Minimization Procedure -->
+        <section class="card">
             <div class="section-heading">
-                <span class="section-number">6</span>
+                <span class="section-number">7</span>
                 <div>
-                    <h2>Simplified Boolean Expression</h2>
-                    <p>Minimum Boolean expression obtained by Quine-McCluskey minimization.</p>
+                    <h2>Step-by-Step Minimization Procedure</h2>
+                    <p>Quine-McCluskey algorithm walkthrough for the minimized expression.</p>
                 </div>
             </div>
-            <div class="expression-row">
-                <div id="simplifiedExpression" class="expression-box simplified-expression"></div>
-                <button type="button" class="copy-btn" title="Copy simplified expression">📋 Copy</button>
-            </div>
+            <div id="minimizationSteps" class="minimization-steps-container"></div>
         </section>
 
         <!-- Karnaugh Map -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">7</span>
+                <span class="section-number">8</span>
                 <div>
                     <h2>Karnaugh Map with Visual Prime Implicants</h2>
                     <p>Visual minimization with highlighted grouping loops.</p>
@@ -319,7 +410,7 @@
         <!-- Don't Care Summary -->
         <section id="dontCareResults" class="card hidden">
             <div class="section-heading">
-                <span class="section-number">8</span>
+                <span class="section-number">9</span>
                 <div>
                     <h2>Don't Care Summary</h2>
                     <p>Minterms and don't care terms used in minimization.</p>
@@ -328,10 +419,18 @@
             <div id="dontCareSummary" class="dont-care-summary-box"></div>
         </section>
 
+        <!-- Download Report Button -->
+        <section class="card" style="text-align:center;">
+            <button type="button" id="downloadReportBtn" class="solve-button" style="display:inline-flex;">
+                📄 Download Analysis Report (PDF)
+            </button>
+            <p class="help-text" style="margin-top:8px;">Opens browser print dialog — select "Save as PDF" to export.</p>
+        </section>
+
         <!-- Multi-Format Code Export -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">8</span>
+                <span class="section-number">10</span>
                 <div>
                     <h2>Code & Hardware Export</h2>
                     <p>Synthesizable hardware description and software logic functions.</p>
@@ -365,7 +464,7 @@
         <!-- Basic Gate Circuit with Live Logic Probe & Zoom -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">9</span>
+                <span class="section-number">11</span>
                 <div>
                     <h2>AND / OR / NOT Implementation</h2>
                     <p>Schematic with live interactive logic probes and signal propagation.</p>
@@ -377,6 +476,7 @@
                     <div class="probe-switch-group" id="probeSwitchesBasic"></div>
                 </div>
                 <div class="circuit-toolbar">
+                    <button type="button" class="tool-btn download-svg-btn" data-target="basicCircuit" title="Download SVG">📥 SVG</button>
                     <button type="button" class="tool-btn zoom-in-btn" data-target="basicCircuit" title="Zoom In">🔍+</button>
                     <button type="button" class="tool-btn zoom-out-btn" data-target="basicCircuit" title="Zoom Out">🔍−</button>
                     <button type="button" class="tool-btn zoom-reset-btn" data-target="basicCircuit" title="Reset Zoom">↺ Reset</button>
@@ -388,7 +488,7 @@
         <!-- NAND-Only Circuit -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">10</span>
+                <span class="section-number">12</span>
                 <div>
                     <h2>NAND-Only Implementation</h2>
                     <p>Universal NAND gate implementation.</p>
@@ -400,6 +500,7 @@
                     <div class="probe-switch-group" id="probeSwitchesNand"></div>
                 </div>
                 <div class="circuit-toolbar">
+                    <button type="button" class="tool-btn download-svg-btn" data-target="nandCircuit" title="Download SVG">📥 SVG</button>
                     <button type="button" class="tool-btn zoom-in-btn" data-target="nandCircuit" title="Zoom In">🔍+</button>
                     <button type="button" class="tool-btn zoom-out-btn" data-target="nandCircuit" title="Zoom Out">🔍−</button>
                     <button type="button" class="tool-btn zoom-reset-btn" data-target="nandCircuit" title="Reset Zoom">↺ Reset</button>
@@ -411,7 +512,7 @@
         <!-- NOR-Only Circuit -->
         <section class="card">
             <div class="section-heading">
-                <span class="section-number">11</span>
+                <span class="section-number">13</span>
                 <div>
                     <h2>NOR-Only Implementation</h2>
                     <p>Universal NOR gate implementation.</p>
@@ -423,6 +524,7 @@
                     <div class="probe-switch-group" id="probeSwitchesNor"></div>
                 </div>
                 <div class="circuit-toolbar">
+                    <button type="button" class="tool-btn download-svg-btn" data-target="norCircuit" title="Download SVG">📥 SVG</button>
                     <button type="button" class="tool-btn zoom-in-btn" data-target="norCircuit" title="Zoom In">🔍+</button>
                     <button type="button" class="tool-btn zoom-out-btn" data-target="norCircuit" title="Zoom Out">🔍−</button>
                     <button type="button" class="tool-btn zoom-reset-btn" data-target="norCircuit" title="Reset Zoom">↺ Reset</button>
@@ -431,10 +533,22 @@
             <div id="norCircuit" class="circuit-container"></div>
         </section>
 
-        <!-- Verification -->
+        <!-- Gate Count / Logic Depth Comparison Table -->
         <section class="card">
             <div class="section-heading">
                 <span class="section-number">12</span>
+                <div>
+                    <h2>Implementation Comparison</h2>
+                    <p>Gate count, logic depth, and total gate-inputs across all three implementations.</p>
+                </div>
+            </div>
+            <div id="circuitComparison" class="comparison-table-container"></div>
+        </section>
+
+        <!-- Verification -->
+        <section class="card">
+            <div class="section-heading">
+                <span class="section-number">13</span>
                 <div>
                     <h2>Circuit Verification</h2>
                     <p>All implementations verified against truth table for all possible states.</p>
@@ -446,7 +560,7 @@
         <!-- Interactive Waveform Playground -->
         <section class="card waveform-playground-card">
             <div class="section-heading">
-                <span class="section-number">13</span>
+                <span class="section-number">14</span>
                 <div>
                     <h2>Interactive Waveform Playground</h2>
                     <p>Experiment with the solved Boolean function by configuring input signals over time.</p>
@@ -477,6 +591,11 @@
                         <option value="32">32</option>
                         <option value="64">64</option>
                     </select>
+                </div>
+                <div class="waveform-delay-control">
+                    <label for="waveformDelay">Gate Delay:</label>
+                    <input type="range" id="waveformDelay" min="0" max="500" value="0" step="25">
+                    <span id="waveformDelayLabel">0 ns (ideal)</span>
                 </div>
             </div>
             <div class="waveform-grid-editor">

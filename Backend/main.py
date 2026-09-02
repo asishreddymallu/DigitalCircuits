@@ -47,7 +47,13 @@ from config import (
     MAX_RETRIES,
     MAX_VARIABLES,
 )
-from models import CircuitAnalysis, CircuitImageRequest, ProblemRequest
+from models import (
+    CircuitAnalysis,
+    CircuitImageRequest,
+    ProblemRequest,
+    TimingDiagramAnalysis,
+    TimingDiagramRequest,
+)
 from parser import parse_explicit_minterms
 
 # ============================================================
@@ -583,6 +589,116 @@ def analyze_circuit_image(req: CircuitImageRequest):
 # ============================================================
 # HEALTH CHECK
 # ============================================================
+
+# ============================================================
+# TIMING DIAGRAM ANALYZER
+# ============================================================
+
+TIMING_DIAGRAM_PROMPT = """
+You are an expert at reading DIGITAL TIMING DIAGRAMS.
+
+Your job is to extract the signal waveforms visible in the timing diagram image.
+
+For each signal, identify:
+1. The signal name (label) as shown in the diagram.
+2. Whether it is an input or output signal.
+3. The logic level (0 or 1) at each time step.
+
+Time steps should be identified by vertical grid lines, clock edges, or
+visible transitions. Sample the logic level at each distinct time interval.
+
+RULES:
+- Preserve signal names exactly as labeled.
+- If a signal is not labeled, use a generic name like "SIG1", "SIG2".
+- If you cannot determine a logic level, default to 0.
+- The output signals are typically below or to the right of input signals.
+- If the diagram is unclear, lower the confidence score.
+- Return 2 to 128 time steps depending on what the diagram shows.
+- All values must be 0 or 1 (no don't-cares in waveforms).
+"""
+
+
+def _analyze_timing_with_gemini(
+    image_bytes: bytes,
+    mime_type: str,
+) -> TimingDiagramAnalysis:
+    """Ask Gemini for a structured timing diagram description."""
+
+    response = client.models.generate_content(
+        model=MODEL,
+        contents=[
+            genai_types.Content(
+                role="user",
+                parts=[
+                    genai_types.Part.from_text(text=TIMING_DIAGRAM_PROMPT),
+                    genai_types.Part.from_bytes(
+                        data=image_bytes,
+                        mime_type=mime_type,
+                    ),
+                ],
+            )
+        ],
+        config=genai_types.GenerateContentConfig(
+            http_options=genai_types.HttpOptions(
+                timeout=GEMINI_TIMEOUT_SECONDS * 1000,
+            ),
+            response_mime_type="application/json",
+            response_schema=TimingDiagramAnalysis,
+            thinking_config=genai_types.ThinkingConfig(
+                thinking_level="MINIMAL"
+            ),
+        ),
+    )
+
+    if not response.text:
+        raise ValueError("Gemini returned an empty response.")
+
+    try:
+        return TimingDiagramAnalysis.model_validate_json(response.text)
+    except Exception as e:
+        raise ValueError(f"Gemini returned invalid timing data: {e}") from e
+
+
+@app.post("/api/analyze-timing-diagram")
+def analyze_timing_diagram(req: TimingDiagramRequest):
+    """Analyze a timing diagram image and extract waveforms."""
+
+    try:
+        image_bytes = _extract_image_bytes(req.image)
+        _validate_declared_image_mime_type(req.image)
+        mime_type = _validate_image_bytes(image_bytes)
+    except ValueError as e:
+        raise HTTPException(status_code=400, detail=str(e))
+
+    try:
+        result = _analyze_timing_with_gemini(image_bytes, mime_type)
+
+        if not result.signals:
+            raise HTTPException(
+                status_code=422,
+                detail="No signals could be extracted from the timing diagram.",
+            )
+
+        return {
+            "success": True,
+            "signals": [
+                {
+                    "name": sig.name,
+                    "values": sig.values,
+                    "is_output": sig.is_output,
+                }
+                for sig in result.signals
+            ],
+            "time_steps": result.time_steps,
+            "confidence": result.confidence,
+        }
+    except TimeoutError as e:
+        raise HTTPException(status_code=504, detail=f"Gemini request timed out: {e}")
+    except ValueError as e:
+        raise HTTPException(status_code=502, detail=str(e))
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"Timing diagram analysis failed: {e}")
+
 
 @app.get("/")
 def root():

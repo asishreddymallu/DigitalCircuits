@@ -1121,7 +1121,7 @@
         for (const r of remainingPrimes) {
           if (chosenIndices.has(r)) continue;
           const gain = stillUncovered.filter((mIdx) => chart[r][mIdx]).length;
-          if (gain > bestGain) {
+          if (gain > bestGain || gain === bestGain && gain > 0 && bestPrime === -1) {
             bestGain = gain;
             bestPrime = r;
           }

@@ -50,6 +50,28 @@ class CircuitConnection(BaseModel):
     to_port: int = Field(ge=0, le=63)
 
 
+class WaveformSignal(BaseModel):
+    """One signal (input or output) extracted from a timing diagram image."""
+
+    name: str = Field(min_length=1, max_length=64)
+    values: list[int] = Field(description="Logic levels: 0 or 1 per time step")
+    is_output: bool = Field(default=False)
+
+
+class TimingDiagramAnalysis(BaseModel):
+    """Structured output from Gemini for a timing diagram image."""
+
+    signals: list[WaveformSignal] = Field(default_factory=list)
+    time_steps: int = Field(ge=2, le=128)
+    confidence: float = Field(ge=0.0, le=1.0)
+
+
+class TimingDiagramRequest(BaseModel):
+    """Incoming request body for /api/analyze-timing-diagram."""
+
+    image: str
+
+
 class CircuitAnalysis(BaseModel):
     """Structured output requested from Gemini for a circuit image.
 

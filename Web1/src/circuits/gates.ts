@@ -91,20 +91,27 @@ export function renderGateSVG(node: CircuitNode, pos: LayoutPosition): string {
 
     if (node.type === "INPUT" || node.type === "CONST") {
         // INPUT blocks are interactive probe pins (click to toggle).
+        // Add active-high (H) indicator for primary inputs.
+        const isConst = node.type === "CONST";
+        const polarityLabel = isConst ? "" : "H";
+        const polarityColor = "#10b981";
         return `
             <g class="circuit-gate-group pin-interactive" data-node-id="${node.id}" data-var="${node.label}">
                 <rect x="${x}" y="${y}" width="90" height="52" rx="10" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2" />
                 <text x="${x + 45}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="15" fill="var(--text-primary)">${escapeSvgText(node.label)}</text>
+                ${polarityLabel ? `<text x="${x + 78}" y="${y + 12}" font-size="10" font-weight="700" fill="${polarityColor}">${polarityLabel}</text>` : ""}
             </g>
         `;
     }
 
     if (node.type === "NOT") {
+        // NOT gate: triangle + bubble on output (active-low output indication)
         return `
             <g class="circuit-gate-group" data-node-id="${node.id}">
                 <polygon points="${x},${y} ${x + 60},${centerY} ${x},${y + 52}" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <circle cx="${x + 67}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <text x="${x + 20}" y="${centerY + 5}" font-weight="800" font-size="12" fill="var(--text-primary)">NOT</text>
+                <text x="${x + 78}" y="${y + 12}" font-size="10" font-weight="700" fill="#f59e0b">L</text>
             </g>
         `;
     }

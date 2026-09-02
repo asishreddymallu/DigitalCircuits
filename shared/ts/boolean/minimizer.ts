@@ -196,15 +196,16 @@ export function findMinimumCover(
 
     if (truncated && stillUncovered.length > 0) {
         // Greedy completion: repeatedly take the prime covering the most
-        // still-uncovered minterms. Correctness (full cover) is guaranteed;
-        // minimality is not.
+        // still-uncovered minterms. Ties are broken by lowest prime index
+        // for deterministic, reproducible results.
         while (stillUncovered.length > 0) {
             let bestPrime = -1;
             let bestGain = -1;
             for (const r of remainingPrimes) {
                 if (chosenIndices.has(r)) continue;
                 const gain = stillUncovered.filter(mIdx => chart[r][mIdx]).length;
-                if (gain > bestGain) {
+                // Strict > ensures we keep the lowest-indexed prime on ties
+                if (gain > bestGain || (gain === bestGain && gain > 0 && bestPrime === -1)) {
                     bestGain = gain;
                     bestPrime = r;
                 }
@@ -216,6 +217,129 @@ export function findMinimumCover(
     }
 
     return { cover: [...chosenIndices].map(i => primes[i]), truncated };
+}
+
+export interface MinimizationStep {
+    title: string;
+    detail: string;
+}
+
+/**
+ * Generate a human-readable step-by-step trace of the QM minimization.
+ * This re-runs the algorithm for display purposes (not for correctness).
+ */
+export function getMinimizationSteps(
+    minterms: number[],
+    variables: string[],
+    dontCares?: ReadonlySet<number>,
+    form: "SOP" | "POS" = "SOP"
+): MinimizationStep[] {
+    const steps: MinimizationStep[] = [];
+    const varCount = variables.length;
+    const isPos = form === "POS";
+    const terms = isPos ? [...minterms] : [...minterms];
+    const dcTerms = dontCares ? [...dontCares] : [];
+
+    steps.push({
+        title: `Step 1: Identify ${isPos ? "Zeros (Maxterms)" : "Ones (Minterms)"}`,
+        detail: `${isPos ? "F = 0" : "F = 1"} at indices: {${terms.sort((a, b) => a - b).join(", ") || "none"}}`
+            + (dcTerms.length > 0 ? `\nDon't cares: {${dcTerms.sort((a, b) => a - b).join(", ")}}` : "")
+    });
+
+    // Step 2: Convert to binary and group by popcount
+    const allTerms = [...new Set([...terms, ...dcTerms])].sort((a, b) => a - b);
+    const binaryTerms = allTerms.map(m => ({
+        minterm: m,
+        binary: m.toString(2).padStart(varCount, "0"),
+        ones: (m.toString(2).padStart(varCount, "0").match(/1/g) || []).length,
+        isDc: dcTerms.includes(m)
+    }));
+
+    let groupStr = "";
+    const groups = new Map<number, typeof binaryTerms>();
+    binaryTerms.forEach(bt => {
+        if (!groups.has(bt.ones)) groups.set(bt.ones, []);
+        groups.get(bt.ones)!.push(bt);
+    });
+    [...groups.keys()].sort((a, b) => a - b).forEach(k => {
+        groupStr += `\n  Group ${k}: ${groups.get(k)!.map(bt => `${bt.binary} (m${bt.minterm}${bt.isDc ? ", dc" : ""})`).join(", ")}`;
+    });
+    steps.push({
+        title: "Step 2: Group by Number of 1s",
+        detail: `Group minterms and don't-cares by popcount (number of 1-bits):${groupStr}`
+    });
+
+    // Step 3: Prime implicant finding
+    const primes = getPrimeImplicants(allTerms, varCount);
+    steps.push({
+        title: "Step 3: Find Prime Implicants",
+        detail: `Merge patterns differing in exactly one bit until no more merges are possible.\n` +
+            `Found ${primes.length} prime implicant(s):\n` +
+            primes.map((p, i) => `  PI${i + 1}: [${p.pattern}] — covers minterms {${allTerms.filter(m => patternCovers(p.pattern, m, varCount)).join(", ")}}`).join("\n")
+    });
+
+    // Step 4: Prime implicant chart
+    const chartLines: string[] = [];
+    const chart: boolean[][] = primes.map(p =>
+        terms.map(m => patternCovers(p.pattern, m, varCount))
+    );
+    terms.forEach((m, c) => {
+        const covering: string[] = [];
+        primes.forEach((p, r) => {
+            if (chart[r][c]) covering.push(`PI${r + 1}`);
+        });
+        chartLines.push(`  m${m}: covered by ${covering.join(", ") || "none"}`);
+    });
+    steps.push({
+        title: "Step 4: Build Prime Implicant Chart",
+        detail: `Check which minterms each prime implicant covers:\n${chartLines.join("\n")}`
+    });
+
+    // Step 5: Essential primes
+    const essentialIndices: number[] = [];
+    for (let c = 0; c < terms.length; c++) {
+        const coveringPrimes: number[] = [];
+        for (let r = 0; r < primes.length; r++) {
+            if (chart[r][c]) coveringPrimes.push(r);
+        }
+        if (coveringPrimes.length === 1) {
+            essentialIndices.push(coveringPrimes[0]);
+        }
+    }
+    const uniqueEssentials = [...new Set(essentialIndices)];
+    const essentialMintermsCovered = new Set<number>();
+    uniqueEssentials.forEach(r => {
+        terms.forEach((m, c) => { if (chart[r][c]) essentialMintermsCovered.add(m); });
+    });
+    const remainingToCover = terms.filter(m => !essentialMintermsCovered.has(m));
+    steps.push({
+        title: "Step 5: Identify Essential Prime Implicants",
+        detail: uniqueEssentials.length > 0
+            ? `Essential PIs (cover minterms uniquely — no other PI can cover them):\n` +
+                uniqueEssentials.map(i => `  • PI${i + 1} [${primes[i].pattern}] — covers minterms {${terms.filter(m => chart[i][terms.indexOf(m)]).join(", ")}}`).join("\n") +
+                (remainingToCover.length > 0
+                    ? `\n\nRemaining minterms to cover: {${remainingToCover.join(", ")}}`
+                    : `\n\nAll minterms covered by essential PIs!`)
+            : "No essential prime implicants found — all minterms are covered by multiple PIs."
+    });
+
+    // Step 6: Final cover
+    const result = isPos
+        ? minimizePOS(minterms, variables, dontCares)
+        : minimizeSOP(minterms, variables, dontCares);
+    const finalForm = result.implicants.map(p => p.pattern).join(", ");
+    const totalLiterals = result.implicants.reduce((sum, p) => {
+        return sum + p.pattern.split("").filter(c => c !== "-").length;
+    }, 0);
+    steps.push({
+        title: "Step 6: Select Minimum Cover",
+        detail: `Combine essential primes + remaining primes to cover all minterms with minimum terms.\n` +
+            `Final ${form} cover: {${finalForm || "empty"}}\n` +
+            `Result: ${result.implicants.length} term(s), ${totalLiterals} literal(s)` +
+            (result.coverTruncated ? "\n⚠ Greedy fallback used (function too large for exact search)" : "")
+    });
+
+    return steps;
 }
 
 /** Guard against runaway input sizes before any exponential work starts. */

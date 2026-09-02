@@ -31,6 +31,60 @@ function apiBase(): string {
     return base.replace(/\/+$/, "");
 }
 
+export interface TimingDiagramResult {
+    signals: Array<{
+        name: string;
+        values: number[];
+        is_output: boolean;
+    }>;
+    time_steps: number;
+    confidence?: number;
+}
+
+export async function analyzeTimingDiagram(
+    imageDataUrl: string,
+    options: { signal?: AbortSignal } = {}
+): Promise<TimingDiagramResult> {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 60_000);
+    const onExternalAbort = () => controller.abort();
+    options.signal?.addEventListener("abort", onExternalAbort);
+
+    try {
+        const response = await fetch(`${apiBase()}/api/analyze-timing-diagram`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ image: imageDataUrl }),
+            signal: controller.signal
+        });
+
+        if (!response.ok) {
+            let detail = `Request failed (${response.status})`;
+            try {
+                const body = await response.json();
+                if (body && typeof body.detail === "string") detail = body.detail;
+            } catch { /* keep default */ }
+            throw new ApiError(detail);
+        }
+
+        const data = await response.json();
+        return {
+            signals: Array.isArray(data.signals) ? data.signals : [],
+            time_steps: typeof data.time_steps === "number" ? data.time_steps : 16,
+            confidence: typeof data.confidence === "number" ? data.confidence : undefined,
+        };
+    } catch (err) {
+        if (err instanceof ApiError) throw err;
+        if (err instanceof DOMException && err.name === "AbortError") {
+            throw new ApiError("The AI backend did not respond in time. Please try again.");
+        }
+        throw new ApiError("Could not reach the AI backend for timing diagram analysis.");
+    } finally {
+        clearTimeout(timer);
+        options.signal?.removeEventListener("abort", onExternalAbort);
+    }
+}
+
 export interface CircuitImageResult {
     variables: string[];
     minterms: number[];

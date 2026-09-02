@@ -344,7 +344,7 @@
         for (const r of remainingPrimes) {
           if (chosenIndices.has(r)) continue;
           const gain = stillUncovered.filter((mIdx) => chart[r][mIdx]).length;
-          if (gain > bestGain) {
+          if (gain > bestGain || gain === bestGain && gain > 0 && bestPrime === -1) {
             bestGain = gain;
             bestPrime = r;
           }
@@ -622,7 +622,6 @@
       const right = parseAND(stream);
       if (right.kind === "xor" || right.kind === "and" || right.kind === "or") {
       }
-      void opToken;
       node = { kind: "xor", left: node, right };
     }
     return node;

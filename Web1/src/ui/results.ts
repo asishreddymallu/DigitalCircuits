@@ -11,15 +11,17 @@ import { el, byId, maybeById, escapeHtml } from "./dom";
 import {
     SolverModel,
     verifySolution,
-    CircuitTriple
+    CircuitTriple,
+    posDisplay
 } from "../solver";
 import { state } from "../state";
-import { resetCircuitIds, buildBasicSOPCircuit, buildNANDCircuit, buildNORCircuit } from "../circuits/circuitGraph";
+import { resetCircuitIds, buildBasicSOPCircuit, buildNANDCircuit, buildNORCircuit, computeCircuitStats, CircuitStats } from "../circuits/circuitGraph";
 import { renderCircuit } from "../circuits/renderer";
 import { generateKarnaughMap } from "../kmap/kmap";
 import { positionKarnaughOverlays } from "../kmap/overlays";
 import { setupProbePanels, toggleProbe } from "./probe";
 import { initWaveformPlayground, resetWaveform } from "./waveform";
+import { getMinimizationSteps } from "../../../shared/ts/boolean/minimizer";
 
 /* ------------------------------------------------------------------ */
 /* Clipboard                                                           */
@@ -198,10 +200,13 @@ export function clearResults(): void {
     byId<HTMLElement>("canonicalSOP").textContent = "";
     byId<HTMLElement>("canonicalPOS").textContent = "";
     byId<HTMLElement>("simplifiedExpression").textContent = "";
+    byId<HTMLElement>("simplifiedPOS").textContent = "";
+    byId<HTMLElement>("minimizationSteps").innerHTML = "";
     byId<HTMLElement>("karnaughMap").innerHTML = "";
     byId<HTMLElement>("basicCircuit").innerHTML = "";
     byId<HTMLElement>("nandCircuit").innerHTML = "";
     byId<HTMLElement>("norCircuit").innerHTML = "";
+    byId<HTMLElement>("circuitComparison").innerHTML = "";
     byId<HTMLElement>("verification").innerHTML = "";
 }
 
@@ -221,7 +226,11 @@ export function renderResults(model: SolverModel, callbacks: RenderCallbacks = {
 
     // Simplified expression + HUD.
     byId<HTMLElement>("simplifiedExpression").textContent = model.simplifiedDisplay;
+    byId<HTMLElement>("simplifiedPOS").textContent = posDisplay(model.pos, model.variables);
     byId<HTMLElement>("hudTermCount").textContent = `${model.sop.implicants.length} Implicants`;
+
+    // Step-by-step minimization procedure
+    renderMinimizationSteps(model);
     if (model.simplifiedCoverTruncated) {
         // The cover is verified-equivalent but not guaranteed minimal.
         byId<HTMLElement>("simplifiedExpression").appendChild(
@@ -266,6 +275,9 @@ export function renderResults(model: SolverModel, callbacks: RenderCallbacks = {
     renderCircuit(state.graphs.nand, byId<HTMLElement>("nandCircuit"), { onPinToggle });
     renderCircuit(state.graphs.nor, byId<HTMLElement>("norCircuit"), { onPinToggle });
 
+    // Gate-count / logic-depth comparison table
+    renderComparisonTable(state.graphs as CircuitTriple);
+
     // Probes + verification.
     setupProbePanels(model.variables, { onSound: callbacks.onClickSound });
 
@@ -275,7 +287,8 @@ export function renderResults(model: SolverModel, callbacks: RenderCallbacks = {
     );
 
     // Initialize waveform playground
-    initWaveformPlayground(model.variables, model.simplifiedAst);
+    const basicStats = computeCircuitStats(state.graphs.basic);
+    initWaveformPlayground(model.variables, model.simplifiedAst, basicStats.logicDepth);
 
     const resultsSection = byId<HTMLElement>("results");
     resultsSection.classList.remove("hidden");
@@ -305,6 +318,77 @@ function buildDontCareSummary(model: SolverModel): DocumentFragment {
     wrap.append(line1, line2, line3);
     frag.appendChild(wrap);
     return frag;
+}
+
+function renderMinimizationSteps(model: SolverModel): void {
+    const container = byId<HTMLElement>("minimizationSteps");
+    if (!container) return;
+
+    const steps = getMinimizationSteps(model.ones, model.variables, model.hasDontCares ? model.dontCares : undefined, "SOP");
+
+    let html = `<ol class="minimization-steps-list">`;
+    steps.forEach(step => {
+        html += `<li class="minimization-step">`;
+        html += `<div class="step-title">${escapeHtml(step.title)}</div>`;
+        html += `<pre class="step-detail">${escapeHtml(step.detail)}</pre>`;
+        html += `</li>`;
+    });
+    html += `</ol>`;
+    container.innerHTML = html;
+}
+
+function renderComparisonTable(circuits: CircuitTriple): void {
+    const container = byId<HTMLElement>("circuitComparison");
+    if (!container) return;
+
+    const statsBasic = computeCircuitStats(circuits.basic);
+    const statsNand = computeCircuitStats(circuits.nand);
+    const statsNor = computeCircuitStats(circuits.nor);
+
+    function gateBreakdownStr(stats: CircuitStats): string {
+        return Object.entries(stats.gateBreakdown)
+            .map(([type, count]) => `${count}× ${type}`)
+            .join(", ") || "—";
+    }
+
+    let html = `<table class="truth-table comparison-table">
+        <thead>
+            <tr>
+                <th>Metric</th>
+                <th>AND/OR/NOT</th>
+                <th>NAND-Only</th>
+                <th>NOR-Only</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Gate Count</strong></td>
+                <td>${statsBasic.gateCount}</td>
+                <td>${statsNand.gateCount}</td>
+                <td>${statsNor.gateCount}</td>
+            </tr>
+            <tr>
+                <td><strong>Logic Depth</strong></td>
+                <td>${statsBasic.logicDepth}</td>
+                <td>${statsNand.logicDepth}</td>
+                <td>${statsNor.logicDepth}</td>
+            </tr>
+            <tr>
+                <td><strong>Total Gate-Inputs</strong></td>
+                <td>${statsBasic.totalGateInputs}</td>
+                <td>${statsNand.totalGateInputs}</td>
+                <td>${statsNor.totalGateInputs}</td>
+            </tr>
+            <tr>
+                <td><strong>Gate Breakdown</strong></td>
+                <td>${gateBreakdownStr(statsBasic)}</td>
+                <td>${gateBreakdownStr(statsNand)}</td>
+                <td>${gateBreakdownStr(statsNor)}</td>
+            </tr>
+        </tbody>
+    </table>`;
+
+    container.innerHTML = html;
 }
 
 function setupExportButtons(model: SolverModel, callbacks: RenderCallbacks): void {

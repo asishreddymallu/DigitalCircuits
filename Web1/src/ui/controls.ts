@@ -143,6 +143,8 @@ export function updateInputInterface(): void {
         dontCare: "dontCareSection",
         truthTable: "truthTableSection",
         wordProblem: "wordProblemSection",
+        kmapInput: "kmapInputSection",
+        timingImage: "timingImageSection",
         circuitImage: "circuitImageSection"
     };
 
@@ -178,6 +180,108 @@ const WORD_PROBLEM_PRESETS = [
 let exampleIndex = 0;
 let wordProblemExampleIndex = 0;
 
+/* ------------------------------------------------------------------ */
+/* Karnaugh Map Input Grid                                             */
+/* ------------------------------------------------------------------ */
+
+let kmapGridValues: Map<string, "0" | "1" | "X"> = new Map();
+
+function grayCode(n: number): number[] {
+    const result: number[] = [];
+    const total = 1 << n;
+    for (let i = 0; i < total; i++) {
+        result.push(i ^ (i >> 1));
+    }
+    return result;
+}
+
+export function generateKmapInputGrid(variableCount: number): void {
+    const host = byId<HTMLDivElement>("kmapInputGrid");
+    if (!host) return;
+
+    kmapGridValues.clear();
+
+    let colBits: number, rowBits: number;
+    if (variableCount === 2) { rowBits = 1; colBits = 1; }
+    else if (variableCount === 3) { rowBits = 1; colBits = 2; }
+    else { rowBits = 2; colBits = 2; }
+
+    const colGray = grayCode(colBits);
+    const rowGray = grayCode(rowBits);
+
+    const colLabels = colGray.map(v => v.toString(2).padStart(colBits, "0"));
+    const rowLabels = rowGray.map(v => v.toString(2).padStart(rowBits, "0"));
+
+    // Compute minterm for each cell
+    function cellMinterm(ri: number, ci: number): number {
+        let minterm = 0;
+        for (let b = 0; b < rowBits; b++) {
+            if (rowGray[ri] & (1 << (rowBits - 1 - b))) {
+                minterm |= 1 << (variableCount - 1 - b);
+            }
+        }
+        for (let b = 0; b < colBits; b++) {
+            if (colGray[ci] & (1 << (colBits - 1 - b))) {
+                minterm |= 1 << (variableCount - 1 - rowBits - b);
+            }
+        }
+        return minterm;
+    }
+
+    let html = `<table class="karnaugh-map kmap-input-table">`;
+    const variables = Array.from({ length: variableCount }, (_, i) => String.fromCharCode(65 + i));
+    const rowVarStr = variables.slice(0, rowBits).join("");
+    const colVarStr = variables.slice(rowBits).join("");
+
+    html += `<thead><tr><th>${rowVarStr}\\${colVarStr}</th>`;
+    for (const label of colLabels) html += `<th>${label}</th>`;
+    html += `</tr></thead><tbody>`;
+
+    for (let ri = 0; ri < rowGray.length; ri++) {
+        html += `<tr><th>${rowLabels[ri]}</th>`;
+        for (let ci = 0; ci < colGray.length; ci++) {
+            const minterm = cellMinterm(ri, ci);
+            kmapGridValues.set(`m${minterm}`, "0");
+            html += `<td class="kmap-input-cell km-zero" data-minterm="${minterm}" role="button" tabindex="0" aria-label="minterm ${minterm}: 0">`;
+            html += `<span class="km-minterm">m${minterm}</span>`;
+            html += `<span class="km-value">0</span>`;
+            html += `</td>`;
+        }
+        html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+    host.innerHTML = html;
+
+    // Wire click handlers
+    host.querySelectorAll<HTMLElement>(".kmap-input-cell").forEach(cell => {
+        const toggle = () => {
+            const key = `m${cell.getAttribute("data-minterm")}`;
+            const current = kmapGridValues.get(key) || "0";
+            const next = current === "0" ? "1" : current === "1" ? "X" : "0";
+            kmapGridValues.set(key, next);
+            cell.className = `kmap-input-cell ${next === "1" ? "km-one" : next === "X" ? "km-dontcare" : "km-zero"}`;
+            cell.querySelector(".km-value")!.textContent = next;
+            cell.setAttribute("aria-label", `minterm ${cell.getAttribute("data-minterm")}: ${next}`);
+        };
+        cell.addEventListener("click", toggle);
+        cell.addEventListener("keydown", (e) => {
+            if (e.key === "Enter" || e.key === " ") { e.preventDefault(); toggle(); }
+        });
+    });
+}
+
+/** Read K-map input grid and return minterms + don't cares. */
+export function readKmapInput(): { minterms: number[]; dontCares: number[] } {
+    const minterms: number[] = [];
+    const dontCares: number[] = [];
+    kmapGridValues.forEach((val, key) => {
+        const m = parseInt(key.replace("m", ""));
+        if (val === "1") minterms.push(m);
+        else if (val === "X") dontCares.push(m);
+    });
+    return { minterms: minterms.sort((a, b) => a - b), dontCares: dontCares.sort((a, b) => a - b) };
+}
+
 /** Wire all step-1 controls. Called once at startup. */
 export function initInputControls(onSound?: (isHigh: boolean) => void): void {
     const inputType = byId<HTMLSelectElement>("inputType");
@@ -197,6 +301,15 @@ export function initInputControls(onSound?: (isHigh: boolean) => void): void {
     dontCareVariables.addEventListener("change", updateDontCareExamples);
     truthVariables.addEventListener("change", () =>
         generateTruthTableInput(Number(truthVariables.value)));
+
+    const kmapInputVariables = byId<HTMLSelectElement>("kmapInputVariables");
+    if (kmapInputVariables) {
+        kmapInputVariables.addEventListener("change", () => {
+            generateKmapInputGrid(Number(kmapInputVariables.value));
+        });
+        // Generate initial grid
+        generateKmapInputGrid(Number(kmapInputVariables.value));
+    }
 
     // Expression example cycler.
     const tryExampleBtn = byId<HTMLButtonElement>("tryExampleBtn");

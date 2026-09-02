@@ -193,6 +193,59 @@ export function buildNORCircuit(implicants: Implicant[], variables: string[]): C
 }
 
 /* ------------------------------------------------------------------ */
+/* Circuit Statistics                                                   */
+/* ------------------------------------------------------------------ */
+
+export interface CircuitStats {
+    gateCount: number;
+    logicDepth: number;
+    totalGateInputs: number;
+    gateBreakdown: Record<string, number>;
+}
+
+/**
+ * Compute gate count, logic depth (longest path from any input to output),
+ * and total gate-inputs for a circuit graph.
+ */
+export function computeCircuitStats(graph: CircuitGraph): CircuitStats {
+    const gateBreakdown: Record<string, number> = {};
+    let totalGateInputs = 0;
+
+    // Count gates (non-INPUT, non-CONST nodes) and their inputs
+    graph.nodes.forEach(node => {
+        if (node.type === "INPUT" || node.type === "CONST") return;
+        gateBreakdown[node.type] = (gateBreakdown[node.type] || 0) + 1;
+        totalGateInputs += node.inputs.length;
+    });
+
+    const gateCount = Object.values(gateBreakdown).reduce((a, b) => a + b, 0);
+
+    // Logic depth: longest path from any INPUT/CONST to the output node
+    const depthCache = new Map<string, number>();
+    function getDepth(id: string): number {
+        const cached = depthCache.get(id);
+        if (cached !== undefined) return cached;
+        const node = graph.nodes.find(n => n.id === id);
+        if (!node) return 0;
+        if (node.type === "INPUT" || node.type === "CONST") {
+            depthCache.set(id, 0);
+            return 0;
+        }
+        let maxInputDepth = 0;
+        for (const inId of node.inputs) {
+            maxInputDepth = Math.max(maxInputDepth, getDepth(inId));
+        }
+        const depth = maxInputDepth + 1;
+        depthCache.set(id, depth);
+        return depth;
+    }
+
+    const logicDepth = getDepth(graph.output);
+
+    return { gateCount, logicDepth, totalGateInputs, gateBreakdown };
+}
+
+/* ------------------------------------------------------------------ */
 /* Evaluation                                                          */
 /* ------------------------------------------------------------------ */
 

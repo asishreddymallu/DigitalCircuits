@@ -15,13 +15,13 @@ import {
     RawInputs,
     parseNumberList
 } from "./solverCore";
-import { fetchMintermsFromProblem, analyzeCircuitImage, preprocessImage } from "./ai/booleanApi";
+import { fetchMintermsFromProblem, analyzeCircuitImage, analyzeTimingDiagram, preprocessImage } from "./ai/booleanApi";
 import { web1ToCircuitFile, storeImportedCircuit } from "../../shared/ts/circuit/interop";
 import { state } from "./state";
 import type { CircuitGraph } from "./circuits/circuitGraph";
-import { initInputControls, updateNumericExamples, initZoomPanControls } from "./ui/controls";
+import { initInputControls, updateNumericExamples, initZoomPanControls, readKmapInput } from "./ui/controls";
 import { setupWaveformControls } from "./ui/waveform";
-import { generateTruthTableInput, readTruthTableSelections } from "./ui/truthTableInput";
+import { generateTruthTableInput, readTruthTableSelections, initTruthTableIO } from "./ui/truthTableInput";
 import {
     renderResults,
     clearError,
@@ -37,7 +37,7 @@ function sound(isHigh: boolean): void {
 
 /** Collect raw inputs from the DOM according to the selected mode. */
 function collectRawInputs(): RawInputs {
-    const mode = byId<HTMLSelectElement>("inputType").value as RawInputs["mode"];
+    const mode = byId<HTMLSelectElement>("inputType").value as string;
 
     switch (mode) {
         case "expression":
@@ -65,8 +65,26 @@ function collectRawInputs(): RawInputs {
             return { mode, truthSelections: readTruthTableSelections() };
         case "wordProblem":
             return { mode };
+        case "timingImage":
+            return { mode };
+        case "kmapInput": {
+            const { minterms, dontCares } = readKmapInput();
+            const varCount = Number(byId<HTMLSelectElement>("kmapInputVariables").value);
+            if (minterms.length === 0 && dontCares.length === 0) {
+                throw new SolverInputError("The Karnaugh map is empty. Click cells to set output values.");
+            }
+            // Use the dontCare solver path since K-map naturally produces minterms + don't cares
+            return {
+                mode: "dontCare" as RawInputs["mode"],
+                dontCareCount: varCount,
+                dontCareMintermList: minterms,
+                dontCareList: dontCares
+            };
+        }
         case "circuitImage":
             return { mode };
+        default:
+            throw new SolverInputError(`Unknown input mode: ${mode}`);
     }
 }
 
@@ -128,6 +146,13 @@ async function solve(): Promise<void> {
             const ci = await runCircuitImage();
             if (!ci) return; // superseded or cancelled
             raw = { ...raw, circuitImage: ci };
+        }
+
+        if (raw.mode === "timingImage") {
+            const ti = await runTimingImage();
+            if (!ti) return; // superseded or cancelled
+            // The timing image produces an expression + waveforms
+            raw = { mode: "expression", expression: ti.expression };
         }
 
         const model = buildSolverModel(raw);
@@ -198,6 +223,175 @@ async function runCircuitImage(): Promise<RawInputs["circuitImage"]> {
         if (activeAiRequest === controller) activeAiRequest = null;
         byId<HTMLButtonElement>("solveButton").disabled = false;
     }
+}
+
+let timingImageDataUrl: string | null = null;
+
+async function runTimingImage(): Promise<{ expression: string } | null> {
+    if (!timingImageDataUrl) throw new SolverInputError("Please upload a timing diagram image first.");
+
+    activeAiRequest?.abort();
+    const controller = new AbortController();
+    activeAiRequest = controller;
+
+    const statusEl = byId<HTMLElement>("timingImageStatus");
+    statusEl.textContent = "Analyzing timing diagram...";
+    statusEl.className = "help-text circuit-image-status status-loading";
+    statusEl.classList.remove("hidden");
+    byId<HTMLButtonElement>("solveButton").disabled = true;
+
+    try {
+        const result = await analyzeTimingDiagram(timingImageDataUrl, { signal: controller.signal });
+
+        if (!result.signals || result.signals.length === 0) {
+            statusEl.textContent = "The timing diagram could not be interpreted. Please try a clearer image.";
+            statusEl.className = "help-text circuit-image-status status-error";
+            throw new SolverInputError("Could not interpret the timing diagram.");
+        }
+
+        statusEl.textContent = `Extracted ${result.signals.length} signals over ${result.time_steps} time steps.`;
+        statusEl.className = "help-text circuit-image-status status-success";
+
+        // Build a Boolean expression from the extracted waveforms
+        // The AI returns signals; we derive the function from input→output mapping
+        const inputSignals = result.signals.filter(s => !s.is_output);
+        const outputSignals = result.signals.filter(s => s.is_output);
+
+        if (inputSignals.length === 0 || outputSignals.length === 0) {
+            throw new SolverInputError("Could not identify both input and output signals in the timing diagram.");
+        }
+
+        const variables = inputSignals.map(s => s.name);
+        const outputSignal = outputSignals[0];
+
+        // Build minterm list from the waveform data
+        const minterms: number[] = [];
+        const timeSteps = Math.min(
+            ...inputSignals.map(s => s.values.length),
+            outputSignal.values.length
+        );
+
+        for (let t = 0; t < timeSteps; t++) {
+            if (outputSignal.values[t] === 1) {
+                let minterm = 0;
+                variables.forEach((v, idx) => {
+                    const sig = inputSignals.find(s => s.name === v);
+                    if (sig && sig.values[t] === 1) {
+                        minterm |= 1 << (variables.length - 1 - idx);
+                    }
+                });
+                minterms.push(minterm);
+            }
+        }
+
+        // Build canonical expression from minterms
+        const uniqueMinterms = [...new Set(minterms)].sort((a, b) => a - b);
+        if (uniqueMinterms.length === 0) {
+            return { expression: "0" };
+        }
+        if (uniqueMinterms.length === (1 << variables.length)) {
+            return { expression: "1" };
+        }
+
+        const terms = uniqueMinterms.map(m => {
+            return variables.map((v, idx) => {
+                const bit = (m >> (variables.length - 1 - idx)) & 1;
+                return bit ? v : `${v}'`;
+            }).join("");
+        });
+
+        return { expression: terms.join(" + ") };
+    } catch (err) {
+        if (controller.signal.aborted && !activeAiRequest?.signal.aborted) {
+            throw new SolverInputError("__superseded__");
+        }
+        if (err instanceof Error && err.name === "AbortError") {
+            statusEl.textContent = "Request cancelled.";
+            statusEl.className = "help-text circuit-image-status status-error";
+            throw new SolverInputError("__cancelled__");
+        }
+        const message = err instanceof Error ? err.message : String(err);
+        statusEl.textContent = `Analysis failed: ${message}`;
+        statusEl.className = "help-text circuit-image-status status-error";
+        throw new SolverInputError("Timing diagram analysis failed.");
+    } finally {
+        if (activeAiRequest === controller) activeAiRequest = null;
+        byId<HTMLButtonElement>("solveButton").disabled = false;
+    }
+}
+
+function initTimingImageUpload(): void {
+    const dropZone = byId<HTMLDivElement>("timingImageDropZone");
+    const fileInput = byId<HTMLInputElement>("timingImageInput");
+    const placeholder = byId<HTMLDivElement>("timingImagePlaceholder");
+    const preview = byId<HTMLDivElement>("timingImagePreview");
+    const img = byId<HTMLImageElement>("timingImageImg");
+    const status = byId<HTMLElement>("timingImageStatus");
+    const replaceBtn = byId<HTMLButtonElement>("timingImageReplaceBtn");
+    const removeBtn = byId<HTMLButtonElement>("timingImageRemoveBtn");
+
+    async function handleFile(file: File) {
+        if (!file.type.match(/^image\/(png|jpeg|webp)$/)) {
+            status.textContent = "Unsupported format. Please use PNG, JPEG, or WebP.";
+            status.className = "help-text circuit-image-status status-error";
+            status.classList.remove("hidden");
+            return;
+        }
+
+        try {
+            status.textContent = "Processing image...";
+            status.className = "help-text circuit-image-status status-loading";
+            status.classList.remove("hidden");
+
+            timingImageDataUrl = await preprocessImage(file);
+            img.src = timingImageDataUrl;
+            placeholder.classList.add("hidden");
+            preview.classList.remove("hidden");
+            status.textContent = "Image ready. Click Solve to analyze.";
+            status.className = "help-text circuit-image-status status-success";
+        } catch (e) {
+            status.textContent = "Failed to process image.";
+            status.className = "help-text circuit-image-status status-error";
+            timingImageDataUrl = null;
+        }
+    }
+
+    dropZone.addEventListener("dragover", (e) => {
+        e.preventDefault();
+        dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", (e) => {
+        e.preventDefault();
+        dropZone.classList.remove("drag-over");
+        const file = e.dataTransfer?.files[0];
+        if (file) handleFile(file);
+    });
+
+    fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (file) handleFile(file);
+    });
+
+    replaceBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        fileInput.click();
+    });
+
+    removeBtn.addEventListener("click", (e) => {
+        e.stopPropagation();
+        timingImageDataUrl = null;
+        img.src = "";
+        placeholder.classList.remove("hidden");
+        preview.classList.add("hidden");
+        fileInput.value = "";
+        status.classList.add("hidden");
+    });
+
+    dropZone.addEventListener("click", (e) => {
+        if ((e.target as HTMLElement).closest(".circuit-image-actions")) return;
+        fileInput.click();
+    });
 }
 
 function initCircuitImageUpload(): void {
@@ -275,9 +469,48 @@ function initCircuitImageUpload(): void {
     });
 }
 
+function downloadSvg(targetId: string): void {
+    const container = document.getElementById(targetId);
+    if (!container) return;
+    const svg = container.querySelector("svg");
+    if (!svg) return;
+
+    // Clone SVG and inline the CSS variables for standalone rendering
+    const clone = svg.cloneNode(true) as SVGElement;
+    const styles = getComputedStyle(document.documentElement);
+    const cssVars = ["--gate-fill", "--gate-stroke", "--wire-low", "--wire-high", "--text-primary", "--bg-card-alt", "--border-color"];
+    cssVars.forEach(v => {
+        clone.setAttribute(v.replace(/^--/, "data-"), styles.getPropertyValue(v).trim());
+    });
+
+    // Inline common styles for standalone SVG
+    const styleEl = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    styleEl.textContent = `
+        text { font-family: 'JetBrains Mono', monospace; }
+        .circuit-wire { fill: none; stroke-width: 2.2; }
+        .wire-active { stroke: #10b981; }
+        .wire-inactive { stroke: #475569; }
+    `;
+    clone.insertBefore(styleEl, clone.firstChild);
+
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(clone);
+    const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${targetId}-circuit.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+}
+
 function init(): void {
     initInputControls(sound);
     initCircuitImageUpload();
+    initTimingImageUpload();
+    initTruthTableIO();
     setupWaveformControls();
     updateNumericExamples();
     generateTruthTableInput(Number(byId<HTMLSelectElement>("truthVariables").value));
@@ -285,6 +518,19 @@ function init(): void {
 
     byId<HTMLButtonElement>("solveButton").addEventListener("click", () => {
         void solve();
+    });
+
+    // Download Report (PDF via print)
+    byId<HTMLButtonElement>("downloadReportBtn")?.addEventListener("click", () => {
+        window.print();
+    });
+
+    // SVG download buttons
+    document.querySelectorAll<HTMLButtonElement>(".download-svg-btn").forEach(btn => {
+        btn.addEventListener("click", () => {
+            const target = btn.getAttribute("data-target");
+            if (target) downloadSvg(target);
+        });
     });
 
     // Open in Circuit Playground buttons (Basic / NAND / NOR)

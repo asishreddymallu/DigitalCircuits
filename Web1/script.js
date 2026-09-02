@@ -242,7 +242,6 @@
       const right = parseAND(stream);
       if (right.kind === "xor" || right.kind === "and" || right.kind === "or") {
       }
-      void opToken;
       node = { kind: "xor", left: node, right };
     }
     return node;
@@ -455,7 +454,7 @@
         for (const r of remainingPrimes) {
           if (chosenIndices.has(r)) continue;
           const gain = stillUncovered.filter((mIdx) => chart[r][mIdx]).length;
-          if (gain > bestGain) {
+          if (gain > bestGain || gain === bestGain && gain > 0 && bestPrime === -1) {
             bestGain = gain;
             bestPrime = r;
           }
@@ -466,6 +465,101 @@
       }
     }
     return { cover: [...chosenIndices].map((i) => primes[i]), truncated };
+  }
+  function getMinimizationSteps(minterms, variables, dontCares, form = "SOP") {
+    const steps = [];
+    const varCount = variables.length;
+    const isPos = form === "POS";
+    const terms = isPos ? [...minterms] : [...minterms];
+    const dcTerms = dontCares ? [...dontCares] : [];
+    steps.push({
+      title: `Step 1: Identify ${isPos ? "Zeros (Maxterms)" : "Ones (Minterms)"}`,
+      detail: `${isPos ? "F = 0" : "F = 1"} at indices: {${terms.sort((a, b) => a - b).join(", ") || "none"}}` + (dcTerms.length > 0 ? `
+Don't cares: {${dcTerms.sort((a, b) => a - b).join(", ")}}` : "")
+    });
+    const allTerms = [.../* @__PURE__ */ new Set([...terms, ...dcTerms])].sort((a, b) => a - b);
+    const binaryTerms = allTerms.map((m) => ({
+      minterm: m,
+      binary: m.toString(2).padStart(varCount, "0"),
+      ones: (m.toString(2).padStart(varCount, "0").match(/1/g) || []).length,
+      isDc: dcTerms.includes(m)
+    }));
+    let groupStr = "";
+    const groups = /* @__PURE__ */ new Map();
+    binaryTerms.forEach((bt) => {
+      if (!groups.has(bt.ones)) groups.set(bt.ones, []);
+      groups.get(bt.ones).push(bt);
+    });
+    [...groups.keys()].sort((a, b) => a - b).forEach((k) => {
+      groupStr += `
+  Group ${k}: ${groups.get(k).map((bt) => `${bt.binary} (m${bt.minterm}${bt.isDc ? ", dc" : ""})`).join(", ")}`;
+    });
+    steps.push({
+      title: "Step 2: Group by Number of 1s",
+      detail: `Group minterms and don't-cares by popcount (number of 1-bits):${groupStr}`
+    });
+    const primes = getPrimeImplicants(allTerms, varCount);
+    steps.push({
+      title: "Step 3: Find Prime Implicants",
+      detail: `Merge patterns differing in exactly one bit until no more merges are possible.
+Found ${primes.length} prime implicant(s):
+` + primes.map((p, i) => `  PI${i + 1}: [${p.pattern}] \u2014 covers minterms {${allTerms.filter((m) => patternCovers(p.pattern, m, varCount)).join(", ")}}`).join("\n")
+    });
+    const chartLines = [];
+    const chart = primes.map(
+      (p) => terms.map((m) => patternCovers(p.pattern, m, varCount))
+    );
+    terms.forEach((m, c) => {
+      const covering = [];
+      primes.forEach((p, r) => {
+        if (chart[r][c]) covering.push(`PI${r + 1}`);
+      });
+      chartLines.push(`  m${m}: covered by ${covering.join(", ") || "none"}`);
+    });
+    steps.push({
+      title: "Step 4: Build Prime Implicant Chart",
+      detail: `Check which minterms each prime implicant covers:
+${chartLines.join("\n")}`
+    });
+    const essentialIndices = [];
+    for (let c = 0; c < terms.length; c++) {
+      const coveringPrimes = [];
+      for (let r = 0; r < primes.length; r++) {
+        if (chart[r][c]) coveringPrimes.push(r);
+      }
+      if (coveringPrimes.length === 1) {
+        essentialIndices.push(coveringPrimes[0]);
+      }
+    }
+    const uniqueEssentials = [...new Set(essentialIndices)];
+    const essentialMintermsCovered = /* @__PURE__ */ new Set();
+    uniqueEssentials.forEach((r) => {
+      terms.forEach((m, c) => {
+        if (chart[r][c]) essentialMintermsCovered.add(m);
+      });
+    });
+    const remainingToCover = terms.filter((m) => !essentialMintermsCovered.has(m));
+    steps.push({
+      title: "Step 5: Identify Essential Prime Implicants",
+      detail: uniqueEssentials.length > 0 ? `Essential PIs (cover minterms uniquely \u2014 no other PI can cover them):
+` + uniqueEssentials.map((i) => `  \u2022 PI${i + 1} [${primes[i].pattern}] \u2014 covers minterms {${terms.filter((m) => chart[i][terms.indexOf(m)]).join(", ")}}`).join("\n") + (remainingToCover.length > 0 ? `
+
+Remaining minterms to cover: {${remainingToCover.join(", ")}}` : `
+
+All minterms covered by essential PIs!`) : "No essential prime implicants found \u2014 all minterms are covered by multiple PIs."
+    });
+    const result = isPos ? minimizePOS(minterms, variables, dontCares) : minimizeSOP(minterms, variables, dontCares);
+    const finalForm = result.implicants.map((p) => p.pattern).join(", ");
+    const totalLiterals = result.implicants.reduce((sum, p) => {
+      return sum + p.pattern.split("").filter((c) => c !== "-").length;
+    }, 0);
+    steps.push({
+      title: "Step 6: Select Minimum Cover",
+      detail: `Combine essential primes + remaining primes to cover all minterms with minimum terms.
+Final ${form} cover: {${finalForm || "empty"}}
+Result: ${result.implicants.length} term(s), ${totalLiterals} literal(s)` + (result.coverTruncated ? "\n\u26A0 Greedy fallback used (function too large for exact search)" : "")
+    });
+    return steps;
   }
   function assertMinimizable(varCount, termCount) {
     if (varCount > LIMITS.MAX_VARIABLES) {
@@ -703,6 +797,36 @@
     graph.output = layer1Ids.length === 1 ? addNode(graph, "NOR", [layer1Ids[0], layer1Ids[0]]) : addNode(graph, "NOR", layer1Ids);
     return graph;
   }
+  function computeCircuitStats(graph) {
+    const gateBreakdown = {};
+    let totalGateInputs = 0;
+    graph.nodes.forEach((node) => {
+      if (node.type === "INPUT" || node.type === "CONST") return;
+      gateBreakdown[node.type] = (gateBreakdown[node.type] || 0) + 1;
+      totalGateInputs += node.inputs.length;
+    });
+    const gateCount = Object.values(gateBreakdown).reduce((a, b) => a + b, 0);
+    const depthCache = /* @__PURE__ */ new Map();
+    function getDepth(id) {
+      const cached = depthCache.get(id);
+      if (cached !== void 0) return cached;
+      const node = graph.nodes.find((n) => n.id === id);
+      if (!node) return 0;
+      if (node.type === "INPUT" || node.type === "CONST") {
+        depthCache.set(id, 0);
+        return 0;
+      }
+      let maxInputDepth = 0;
+      for (const inId of node.inputs) {
+        maxInputDepth = Math.max(maxInputDepth, getDepth(inId));
+      }
+      const depth = maxInputDepth + 1;
+      depthCache.set(id, depth);
+      return depth;
+    }
+    const logicDepth = getDepth(graph.output);
+    return { gateCount, logicDepth, totalGateInputs, gateBreakdown };
+  }
   function evaluateCircuit(graph, assignment) {
     const memo = /* @__PURE__ */ new Map();
     function evaluateNode(id) {
@@ -809,6 +933,11 @@
     if (result.implicants.length === 0) return "0";
     return result.implicants.map((imp) => termToString(imp.pattern, variables)).join(" + ");
   }
+  function posDisplay(result, variables) {
+    if (result.isConstant) return result.constantValue ? "1" : "0";
+    if (result.implicants.length === 0) return "1";
+    return result.implicants.map((imp) => clauseToString(imp.pattern, variables)).join("");
+  }
   function generateCanonicalSOP(rows, variables, dontCares) {
     const terms = rows.map((row, index) => ({ row, index })).filter(({ row, index }) => row.output === 1 && (!dontCares || !dontCares.has(index))).map(({ row }) => joinLiteralsForDisplay(
       row.inputs.map((val, idx) => val ? variables[idx] : `${variables[idx]}'`)
@@ -838,6 +967,8 @@
         return fromWordProblem(raw.wordProblem);
       case "circuitImage":
         return fromCircuitImage(raw.circuitImage);
+      case "timingImage":
+        return fromExpression(raw.expression ?? "");
     }
   }
   function finish(mode, variables, originalAst, originalDisplay, rows, dontCares) {
@@ -1046,6 +1177,44 @@
     const override = window.DC_BOOLEAN_API_BASE;
     const base = override || DEFAULT_API_BASE;
     return base.replace(/\/+$/, "");
+  }
+  async function analyzeTimingDiagram(imageDataUrl, options = {}) {
+    const controller = new AbortController();
+    const timer = setTimeout(() => controller.abort(), 6e4);
+    const onExternalAbort = () => controller.abort();
+    options.signal?.addEventListener("abort", onExternalAbort);
+    try {
+      const response = await fetch(`${apiBase()}/api/analyze-timing-diagram`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ image: imageDataUrl }),
+        signal: controller.signal
+      });
+      if (!response.ok) {
+        let detail = `Request failed (${response.status})`;
+        try {
+          const body = await response.json();
+          if (body && typeof body.detail === "string") detail = body.detail;
+        } catch {
+        }
+        throw new ApiError(detail);
+      }
+      const data = await response.json();
+      return {
+        signals: Array.isArray(data.signals) ? data.signals : [],
+        time_steps: typeof data.time_steps === "number" ? data.time_steps : 16,
+        confidence: typeof data.confidence === "number" ? data.confidence : void 0
+      };
+    } catch (err) {
+      if (err instanceof ApiError) throw err;
+      if (err instanceof DOMException && err.name === "AbortError") {
+        throw new ApiError("The AI backend did not respond in time. Please try again.");
+      }
+      throw new ApiError("Could not reach the AI backend for timing diagram analysis.");
+    } finally {
+      clearTimeout(timer);
+      options.signal?.removeEventListener("abort", onExternalAbort);
+    }
   }
   function preprocessImage(file) {
     return new Promise((resolve, reject) => {
@@ -1603,10 +1772,14 @@ bool ${functionName}(${args}) {
     const y = pos.y;
     const centerY = y + 26;
     if (node.type === "INPUT" || node.type === "CONST") {
+      const isConst = node.type === "CONST";
+      const polarityLabel = isConst ? "" : "H";
+      const polarityColor = "#10b981";
       return `
             <g class="circuit-gate-group pin-interactive" data-node-id="${node.id}" data-var="${node.label}">
                 <rect x="${x}" y="${y}" width="90" height="52" rx="10" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2" />
                 <text x="${x + 45}" y="${centerY + 5}" text-anchor="middle" font-weight="800" font-size="15" fill="var(--text-primary)">${escapeSvgText(node.label)}</text>
+                ${polarityLabel ? `<text x="${x + 78}" y="${y + 12}" font-size="10" font-weight="700" fill="${polarityColor}">${polarityLabel}</text>` : ""}
             </g>
         `;
     }
@@ -1616,6 +1789,7 @@ bool ${functionName}(${args}) {
                 <polygon points="${x},${y} ${x + 60},${centerY} ${x},${y + 52}" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <circle cx="${x + 67}" cy="${centerY}" r="7" fill="var(--gate-fill)" stroke="var(--gate-stroke)" stroke-width="2.2" />
                 <text x="${x + 20}" y="${centerY + 5}" font-weight="800" font-size="12" fill="var(--text-primary)">NOT</text>
+                <text x="${x + 78}" y="${y + 12}" font-size="10" font-weight="700" fill="#f59e0b">L</text>
             </g>
         `;
     }
@@ -2225,19 +2399,24 @@ bool ${functionName}(${args}) {
     stepCount: 16,
     patterns: {},
     outputPattern: [],
+    delayedOutputPattern: [],
     currentStep: 0,
     isPlaying: false,
     speed: 500,
     timer: null,
-    zoomLevel: 1
+    zoomLevel: 1,
+    gateDelayNs: 0,
+    logicDepth: 1
   };
-  function initWaveformPlayground(variables, expression) {
+  function initWaveformPlayground(variables, expression, logicDepth = 1) {
     state2.variables = variables;
     state2.expression = expression;
     state2.stepCount = 16;
     state2.currentStep = 0;
     state2.isPlaying = false;
     state2.patterns = {};
+    state2.logicDepth = logicDepth;
+    state2.gateDelayNs = 0;
     variables.forEach((v, idx) => {
       const pattern = [];
       const period = 1 << variables.length - 1 - idx;
@@ -2273,6 +2452,25 @@ bool ${functionName}(${args}) {
       });
       state2.outputPattern.push(evalAst(state2.expression, assignment));
     }
+    computeDelayedOutput();
+  }
+  function computeDelayedOutput() {
+    if (state2.gateDelayNs === 0 || state2.outputPattern.length === 0) {
+      state2.delayedOutputPattern = [...state2.outputPattern];
+      return;
+    }
+    const totalDelayNs = state2.gateDelayNs * state2.logicDepth;
+    const delaySteps = Math.round(totalDelayNs / 50);
+    const n = state2.outputPattern.length;
+    state2.delayedOutputPattern = [];
+    for (let step = 0; step < n; step++) {
+      const srcStep = step - delaySteps;
+      if (srcStep < 0) {
+        state2.delayedOutputPattern.push(false);
+      } else {
+        state2.delayedOutputPattern.push(state2.outputPattern[srcStep]);
+      }
+    }
   }
   function renderGridEditor() {
     const container = byId("waveformInputRows");
@@ -2300,6 +2498,18 @@ bool ${functionName}(${args}) {
       html += `<div class="${cls}${currentCls}">${val ? "1" : "0"}</div>`;
     }
     html += `</div></div>`;
+    if (state2.gateDelayNs > 0) {
+      html += `<div class="waveform-input-row">`;
+      html += `<span class="waveform-input-label" style="color:#f59e0b;">F<sub>d</sub></span>`;
+      html += `<div class="waveform-input-cells">`;
+      for (let step = 0; step < state2.stepCount; step++) {
+        const val = state2.delayedOutputPattern[step] ?? false;
+        const cls = val ? "waveform-cell waveform-cell-high" : "waveform-cell waveform-cell-delayed";
+        const currentCls = step === state2.currentStep ? " current-step" : "";
+        html += `<div class="${cls}${currentCls}" title="Delayed output (t-${Math.round(state2.gateDelayNs * state2.logicDepth / 50)} steps)">${val ? "1" : "0"}</div>`;
+      }
+      html += `</div></div>`;
+    }
     container.innerHTML = html;
     container.querySelectorAll("[data-var]").forEach((cell) => {
       cell.addEventListener("click", () => {
@@ -2332,10 +2542,8 @@ bool ${functionName}(${args}) {
     const h = canvas.height;
     ctx.clearRect(0, 0, w, h);
     if (state2.variables.length === 0) return;
-    const signalNames = [...state2.variables, "F"];
     const startX = 50;
     const graphWidth = w - startX - 20;
-    const rowHeight = Math.min(28, Math.floor((h - 10) / signalNames.length));
     const stepX = graphWidth / Math.max(1, state2.stepCount - 1) * state2.zoomLevel;
     ctx.strokeStyle = "rgba(255,255,255,0.04)";
     ctx.lineWidth = 1;
@@ -2353,19 +2561,28 @@ bool ${functionName}(${args}) {
     ctx.moveTo(curX, 5);
     ctx.lineTo(curX, h - 5);
     ctx.stroke();
-    signalNames.forEach((name, idx) => {
-      const isOutput = name === "F";
-      const pattern = isOutput ? state2.outputPattern : state2.patterns[name];
-      if (!pattern) return;
+    const allSignals = [];
+    state2.variables.forEach((v) => {
+      allSignals.push({ name: v, pattern: state2.patterns[v] || [], color: "#38bdf8", dashed: false });
+    });
+    allSignals.push({ name: "F", pattern: state2.outputPattern, color: "#10b981", dashed: false });
+    if (state2.gateDelayNs > 0) {
+      allSignals.push({ name: "F(dly)", pattern: state2.delayedOutputPattern, color: "#f59e0b", dashed: true });
+    }
+    const rowHeight = Math.min(28, Math.floor((h - 10) / allSignals.length));
+    allSignals.forEach((signal, idx) => {
+      const { name, pattern, color, dashed } = signal;
       const topY = 10 + idx * rowHeight;
       const lowY = topY + rowHeight - 5;
       const highY = topY + 5;
       ctx.font = "bold 11px 'JetBrains Mono', monospace";
-      ctx.fillStyle = isOutput ? "#34d399" : "#60a5fa";
+      ctx.fillStyle = color;
       ctx.textAlign = "right";
       ctx.fillText(name, startX - 8, (highY + lowY) / 2 + 4);
-      ctx.strokeStyle = isOutput ? "#10b981" : "#38bdf8";
+      ctx.strokeStyle = color;
       ctx.lineWidth = 2;
+      if (dashed) ctx.setLineDash([6, 4]);
+      else ctx.setLineDash([]);
       ctx.beginPath();
       for (let step = 0; step < state2.stepCount; step++) {
         const x = startX + step * stepX;
@@ -2385,6 +2602,7 @@ bool ${functionName}(${args}) {
         }
       }
       ctx.stroke();
+      ctx.setLineDash([]);
     });
     byId("waveformTimeDisplay").textContent = String(state2.currentStep);
     byId("waveformPeriodDisplay").textContent = String(state2.stepCount);
@@ -2453,6 +2671,19 @@ bool ${functionName}(${args}) {
       state2.zoomLevel = Math.max(0.5, state2.zoomLevel - 0.5);
       drawWaveform();
     });
+    const delaySlider = byId("waveformDelay");
+    const delayLabel = byId("waveformDelayLabel");
+    if (delaySlider) {
+      delaySlider.addEventListener("input", () => {
+        state2.gateDelayNs = Number(delaySlider.value);
+        if (delayLabel) {
+          delayLabel.textContent = state2.gateDelayNs === 0 ? "0 ns (ideal)" : `${state2.gateDelayNs} ns \xD7 ${state2.logicDepth} gates = ${state2.gateDelayNs * state2.logicDepth} ns`;
+        }
+        computeOutput();
+        renderGridEditor();
+        drawWaveform();
+      });
+    }
     const stepsSelect = byId("waveformSteps");
     if (stepsSelect) {
       stepsSelect.addEventListener("change", () => {
@@ -2610,10 +2841,13 @@ bool ${functionName}(${args}) {
     byId("canonicalSOP").textContent = "";
     byId("canonicalPOS").textContent = "";
     byId("simplifiedExpression").textContent = "";
+    byId("simplifiedPOS").textContent = "";
+    byId("minimizationSteps").innerHTML = "";
     byId("karnaughMap").innerHTML = "";
     byId("basicCircuit").innerHTML = "";
     byId("nandCircuit").innerHTML = "";
     byId("norCircuit").innerHTML = "";
+    byId("circuitComparison").innerHTML = "";
     byId("verification").innerHTML = "";
   }
   function renderResults(model, callbacks = {}) {
@@ -2624,7 +2858,9 @@ bool ${functionName}(${args}) {
     byId("canonicalSOP").textContent = model.canonicalSOP;
     byId("canonicalPOS").textContent = model.canonicalPOS;
     byId("simplifiedExpression").textContent = model.simplifiedDisplay;
+    byId("simplifiedPOS").textContent = posDisplay(model.pos, model.variables);
     byId("hudTermCount").textContent = `${model.sop.implicants.length} Implicants`;
+    renderMinimizationSteps(model);
     if (model.simplifiedCoverTruncated) {
       byId("simplifiedExpression").appendChild(
         el("div", "help-text", "(very large function: greedy grouping used)")
@@ -2657,12 +2893,14 @@ bool ${functionName}(${args}) {
     renderCircuit(state.graphs.basic, byId("basicCircuit"), { onPinToggle });
     renderCircuit(state.graphs.nand, byId("nandCircuit"), { onPinToggle });
     renderCircuit(state.graphs.nor, byId("norCircuit"), { onPinToggle });
+    renderComparisonTable(state.graphs);
     setupProbePanels(model.variables, { onSound: callbacks.onClickSound });
     const verified = verifySolution(model, state.graphs);
     byId("verification").replaceChildren(
       renderVerification(verified, model.variables.length, callbacks.onSound)
     );
-    initWaveformPlayground(model.variables, model.simplifiedAst);
+    const basicStats = computeCircuitStats(state.graphs.basic);
+    initWaveformPlayground(model.variables, model.simplifiedAst, basicStats.logicDepth);
     const resultsSection = byId("results");
     resultsSection.classList.remove("hidden");
     resultsSection.scrollIntoView({ behavior: "smooth" });
@@ -2686,6 +2924,67 @@ bool ${functionName}(${args}) {
     wrap.append(line1, line2, line3);
     frag.appendChild(wrap);
     return frag;
+  }
+  function renderMinimizationSteps(model) {
+    const container = byId("minimizationSteps");
+    if (!container) return;
+    const steps = getMinimizationSteps(model.ones, model.variables, model.hasDontCares ? model.dontCares : void 0, "SOP");
+    let html = `<ol class="minimization-steps-list">`;
+    steps.forEach((step) => {
+      html += `<li class="minimization-step">`;
+      html += `<div class="step-title">${escapeHtml(step.title)}</div>`;
+      html += `<pre class="step-detail">${escapeHtml(step.detail)}</pre>`;
+      html += `</li>`;
+    });
+    html += `</ol>`;
+    container.innerHTML = html;
+  }
+  function renderComparisonTable(circuits) {
+    const container = byId("circuitComparison");
+    if (!container) return;
+    const statsBasic = computeCircuitStats(circuits.basic);
+    const statsNand = computeCircuitStats(circuits.nand);
+    const statsNor = computeCircuitStats(circuits.nor);
+    function gateBreakdownStr(stats) {
+      return Object.entries(stats.gateBreakdown).map(([type, count]) => `${count}\xD7 ${type}`).join(", ") || "\u2014";
+    }
+    let html = `<table class="truth-table comparison-table">
+        <thead>
+            <tr>
+                <th>Metric</th>
+                <th>AND/OR/NOT</th>
+                <th>NAND-Only</th>
+                <th>NOR-Only</th>
+            </tr>
+        </thead>
+        <tbody>
+            <tr>
+                <td><strong>Gate Count</strong></td>
+                <td>${statsBasic.gateCount}</td>
+                <td>${statsNand.gateCount}</td>
+                <td>${statsNor.gateCount}</td>
+            </tr>
+            <tr>
+                <td><strong>Logic Depth</strong></td>
+                <td>${statsBasic.logicDepth}</td>
+                <td>${statsNand.logicDepth}</td>
+                <td>${statsNor.logicDepth}</td>
+            </tr>
+            <tr>
+                <td><strong>Total Gate-Inputs</strong></td>
+                <td>${statsBasic.totalGateInputs}</td>
+                <td>${statsNand.totalGateInputs}</td>
+                <td>${statsNor.totalGateInputs}</td>
+            </tr>
+            <tr>
+                <td><strong>Gate Breakdown</strong></td>
+                <td>${gateBreakdownStr(statsBasic)}</td>
+                <td>${gateBreakdownStr(statsNand)}</td>
+                <td>${gateBreakdownStr(statsNor)}</td>
+            </tr>
+        </tbody>
+    </table>`;
+    container.innerHTML = html;
   }
   function setupExportButtons(model, callbacks) {
     const verilog = generateVerilogModule(model.simplifiedAst, {
@@ -2754,6 +3053,92 @@ bool ${functionName}(${args}) {
   function readTruthTableSelections() {
     const host = byId("userTruthTable");
     return Array.from(host.querySelectorAll(".tt-input-select")).map((sel) => sel.value);
+  }
+  function parsePastedTruthTable(text) {
+    const lines = text.trim().split("\n").map((l) => l.trim()).filter((l) => l.length > 0);
+    if (lines.length === 0) return "No data to parse.";
+    let startIdx = 0;
+    const firstLine = lines[0];
+    const hasHeader = /[A-Za-z]/.test(firstLine) && !/[01Xx]/.test(firstLine.replace(/[A-Za-z]/g, ""));
+    if (hasHeader) startIdx = 1;
+    function parseLine(line) {
+      if (line.includes(",")) return line.split(",").map((s) => s.trim());
+      if (line.includes("	")) return line.split("	").map((s) => s.trim());
+      return line.split(/\s+/).map((s) => s.trim());
+    }
+    const dataLines = lines.slice(startIdx);
+    if (dataLines.length === 0) return "No data rows found after header.";
+    const firstDataFields = parseLine(dataLines[0]);
+    const numCols = firstDataFields.length;
+    const numVars = numCols - 1;
+    if (numVars < 1 || numVars > 6) {
+      return `Detected ${numVars} variable(s). Supported range: 1-6. Each row must have ${numVars + 1} columns (inputs + output).`;
+    }
+    const expectedRows = 1 << numVars;
+    if (dataLines.length !== expectedRows) {
+      return `Expected exactly ${expectedRows} rows for ${numVars} variable(s), but found ${dataLines.length}. Each unique input combination must appear exactly once.`;
+    }
+    const validOutput = /^[01Xx\-]$/;
+    for (let i = 0; i < dataLines.length; i++) {
+      const fields = parseLine(dataLines[i]);
+      const outputVal = fields[fields.length - 1];
+      if (!validOutput.test(outputVal)) {
+        return `Row ${i + 1 + startIdx}: invalid output value "${outputVal}". Expected 0, 1, X, or -.`;
+      }
+      if (fields.length !== numCols) {
+        return `Row ${i + 1 + startIdx}: expected ${numCols} columns but found ${fields.length}.`;
+      }
+    }
+    const varSelect = byId("truthVariables");
+    varSelect.value = String(numVars);
+    generateTruthTableInput(numVars);
+    const host = byId("userTruthTable");
+    const selects = Array.from(host.querySelectorAll(".tt-input-select"));
+    dataLines.forEach((line, idx) => {
+      const fields = parseLine(line);
+      const outputVal = fields[fields.length - 1].toUpperCase();
+      if (idx < selects.length) {
+        if (outputVal === "1") selects[idx].value = "1";
+        else if (outputVal === "0") selects[idx].value = "0";
+        else if (outputVal === "X" || outputVal === "-") selects[idx].value = "X";
+      }
+    });
+    return null;
+  }
+  function initTruthTableIO() {
+    const parseBtn = byId("parseTruthTablePasteBtn");
+    if (parseBtn) {
+      parseBtn.addEventListener("click", () => {
+        const textarea = byId("truthTablePaste");
+        if (textarea && textarea.value.trim()) {
+          const error = parsePastedTruthTable(textarea.value);
+          if (error) {
+            const statusEl = byId("truthTablePasteStatus");
+            if (statusEl) {
+              statusEl.textContent = error;
+              statusEl.className = "help-text status-error";
+              statusEl.classList.remove("hidden");
+              setTimeout(() => statusEl.classList.add("hidden"), 6e3);
+            }
+          }
+        }
+      });
+    }
+    const fileInput = byId("truthTableFileInput");
+    if (fileInput) {
+      fileInput.addEventListener("change", () => {
+        const file = fileInput.files?.[0];
+        if (!file) return;
+        const reader = new FileReader();
+        reader.onload = () => {
+          const text = reader.result;
+          const textarea = byId("truthTablePaste");
+          if (textarea) textarea.value = text;
+          parsePastedTruthTable(text);
+        };
+        reader.readAsText(file);
+      });
+    }
   }
 
   // Web1/src/ui/controls.ts
@@ -2855,6 +3240,8 @@ bool ${functionName}(${args}) {
       dontCare: "dontCareSection",
       truthTable: "truthTableSection",
       wordProblem: "wordProblemSection",
+      kmapInput: "kmapInputSection",
+      timingImage: "timingImageSection",
       circuitImage: "circuitImageSection"
     };
     Object.entries(sections).forEach(([mode, id]) => {
@@ -2880,6 +3267,98 @@ bool ${functionName}(${args}) {
   ];
   var exampleIndex = 0;
   var wordProblemExampleIndex = 0;
+  var kmapGridValues = /* @__PURE__ */ new Map();
+  function grayCode2(n) {
+    const result = [];
+    const total = 1 << n;
+    for (let i = 0; i < total; i++) {
+      result.push(i ^ i >> 1);
+    }
+    return result;
+  }
+  function generateKmapInputGrid(variableCount) {
+    const host = byId("kmapInputGrid");
+    if (!host) return;
+    kmapGridValues.clear();
+    let colBits, rowBits;
+    if (variableCount === 2) {
+      rowBits = 1;
+      colBits = 1;
+    } else if (variableCount === 3) {
+      rowBits = 1;
+      colBits = 2;
+    } else {
+      rowBits = 2;
+      colBits = 2;
+    }
+    const colGray = grayCode2(colBits);
+    const rowGray = grayCode2(rowBits);
+    const colLabels = colGray.map((v) => v.toString(2).padStart(colBits, "0"));
+    const rowLabels = rowGray.map((v) => v.toString(2).padStart(rowBits, "0"));
+    function cellMinterm(ri, ci) {
+      let minterm = 0;
+      for (let b = 0; b < rowBits; b++) {
+        if (rowGray[ri] & 1 << rowBits - 1 - b) {
+          minterm |= 1 << variableCount - 1 - b;
+        }
+      }
+      for (let b = 0; b < colBits; b++) {
+        if (colGray[ci] & 1 << colBits - 1 - b) {
+          minterm |= 1 << variableCount - 1 - rowBits - b;
+        }
+      }
+      return minterm;
+    }
+    let html = `<table class="karnaugh-map kmap-input-table">`;
+    const variables = Array.from({ length: variableCount }, (_, i) => String.fromCharCode(65 + i));
+    const rowVarStr = variables.slice(0, rowBits).join("");
+    const colVarStr = variables.slice(rowBits).join("");
+    html += `<thead><tr><th>${rowVarStr}\\${colVarStr}</th>`;
+    for (const label of colLabels) html += `<th>${label}</th>`;
+    html += `</tr></thead><tbody>`;
+    for (let ri = 0; ri < rowGray.length; ri++) {
+      html += `<tr><th>${rowLabels[ri]}</th>`;
+      for (let ci = 0; ci < colGray.length; ci++) {
+        const minterm = cellMinterm(ri, ci);
+        kmapGridValues.set(`m${minterm}`, "0");
+        html += `<td class="kmap-input-cell km-zero" data-minterm="${minterm}" role="button" tabindex="0" aria-label="minterm ${minterm}: 0">`;
+        html += `<span class="km-minterm">m${minterm}</span>`;
+        html += `<span class="km-value">0</span>`;
+        html += `</td>`;
+      }
+      html += `</tr>`;
+    }
+    html += `</tbody></table>`;
+    host.innerHTML = html;
+    host.querySelectorAll(".kmap-input-cell").forEach((cell) => {
+      const toggle = () => {
+        const key = `m${cell.getAttribute("data-minterm")}`;
+        const current = kmapGridValues.get(key) || "0";
+        const next = current === "0" ? "1" : current === "1" ? "X" : "0";
+        kmapGridValues.set(key, next);
+        cell.className = `kmap-input-cell ${next === "1" ? "km-one" : next === "X" ? "km-dontcare" : "km-zero"}`;
+        cell.querySelector(".km-value").textContent = next;
+        cell.setAttribute("aria-label", `minterm ${cell.getAttribute("data-minterm")}: ${next}`);
+      };
+      cell.addEventListener("click", toggle);
+      cell.addEventListener("keydown", (e) => {
+        if (e.key === "Enter" || e.key === " ") {
+          e.preventDefault();
+          toggle();
+        }
+      });
+    });
+  }
+  function readKmapInput() {
+    const minterms = [];
+    const dontCares = [];
+    kmapGridValues.forEach((val, key) => {
+      const m = parseInt(key.replace("m", ""));
+      if (val === "1") minterms.push(m);
+      else if (val === "X") dontCares.push(m);
+    });
+    return { minterms: minterms.sort((a, b) => a - b), dontCares: dontCares.sort((a, b) => a - b) };
+  }
   function initInputControls(onSound) {
     const inputType = byId("inputType");
     const mintermVariables = byId("mintermVariables");
@@ -2896,6 +3375,13 @@ bool ${functionName}(${args}) {
     maxtermVariables.addEventListener("change", updateNumericExamples);
     dontCareVariables.addEventListener("change", updateDontCareExamples);
     truthVariables.addEventListener("change", () => generateTruthTableInput(Number(truthVariables.value)));
+    const kmapInputVariables = byId("kmapInputVariables");
+    if (kmapInputVariables) {
+      kmapInputVariables.addEventListener("change", () => {
+        generateKmapInputGrid(Number(kmapInputVariables.value));
+      });
+      generateKmapInputGrid(Number(kmapInputVariables.value));
+    }
     const tryExampleBtn = byId("tryExampleBtn");
     tryExampleBtn.addEventListener("click", () => {
       onSound?.(true);
@@ -2950,8 +3436,25 @@ bool ${functionName}(${args}) {
         return { mode, truthSelections: readTruthTableSelections() };
       case "wordProblem":
         return { mode };
+      case "timingImage":
+        return { mode };
+      case "kmapInput": {
+        const { minterms, dontCares } = readKmapInput();
+        const varCount = Number(byId("kmapInputVariables").value);
+        if (minterms.length === 0 && dontCares.length === 0) {
+          throw new SolverInputError("The Karnaugh map is empty. Click cells to set output values.");
+        }
+        return {
+          mode: "dontCare",
+          dontCareCount: varCount,
+          dontCareMintermList: minterms,
+          dontCareList: dontCares
+        };
+      }
       case "circuitImage":
         return { mode };
+      default:
+        throw new SolverInputError(`Unknown input mode: ${mode}`);
     }
   }
   var activeAiRequest = null;
@@ -3003,6 +3506,11 @@ bool ${functionName}(${args}) {
         const ci = await runCircuitImage();
         if (!ci) return;
         raw = { ...raw, circuitImage: ci };
+      }
+      if (raw.mode === "timingImage") {
+        const ti = await runTimingImage();
+        if (!ti) return;
+        raw = { mode: "expression", expression: ti.expression };
       }
       const model = buildSolverModel(raw);
       renderResults(model, { onSound: () => window.StudioFX?.success(), onClickSound: sound });
@@ -3061,6 +3569,147 @@ bool ${functionName}(${args}) {
       if (activeAiRequest === controller) activeAiRequest = null;
       byId("solveButton").disabled = false;
     }
+  }
+  var timingImageDataUrl = null;
+  async function runTimingImage() {
+    if (!timingImageDataUrl) throw new SolverInputError("Please upload a timing diagram image first.");
+    activeAiRequest?.abort();
+    const controller = new AbortController();
+    activeAiRequest = controller;
+    const statusEl = byId("timingImageStatus");
+    statusEl.textContent = "Analyzing timing diagram...";
+    statusEl.className = "help-text circuit-image-status status-loading";
+    statusEl.classList.remove("hidden");
+    byId("solveButton").disabled = true;
+    try {
+      const result = await analyzeTimingDiagram(timingImageDataUrl, { signal: controller.signal });
+      if (!result.signals || result.signals.length === 0) {
+        statusEl.textContent = "The timing diagram could not be interpreted. Please try a clearer image.";
+        statusEl.className = "help-text circuit-image-status status-error";
+        throw new SolverInputError("Could not interpret the timing diagram.");
+      }
+      statusEl.textContent = `Extracted ${result.signals.length} signals over ${result.time_steps} time steps.`;
+      statusEl.className = "help-text circuit-image-status status-success";
+      const inputSignals = result.signals.filter((s) => !s.is_output);
+      const outputSignals = result.signals.filter((s) => s.is_output);
+      if (inputSignals.length === 0 || outputSignals.length === 0) {
+        throw new SolverInputError("Could not identify both input and output signals in the timing diagram.");
+      }
+      const variables = inputSignals.map((s) => s.name);
+      const outputSignal = outputSignals[0];
+      const minterms = [];
+      const timeSteps = Math.min(
+        ...inputSignals.map((s) => s.values.length),
+        outputSignal.values.length
+      );
+      for (let t = 0; t < timeSteps; t++) {
+        if (outputSignal.values[t] === 1) {
+          let minterm = 0;
+          variables.forEach((v, idx) => {
+            const sig = inputSignals.find((s) => s.name === v);
+            if (sig && sig.values[t] === 1) {
+              minterm |= 1 << variables.length - 1 - idx;
+            }
+          });
+          minterms.push(minterm);
+        }
+      }
+      const uniqueMinterms = [...new Set(minterms)].sort((a, b) => a - b);
+      if (uniqueMinterms.length === 0) {
+        return { expression: "0" };
+      }
+      if (uniqueMinterms.length === 1 << variables.length) {
+        return { expression: "1" };
+      }
+      const terms = uniqueMinterms.map((m) => {
+        return variables.map((v, idx) => {
+          const bit = m >> variables.length - 1 - idx & 1;
+          return bit ? v : `${v}'`;
+        }).join("");
+      });
+      return { expression: terms.join(" + ") };
+    } catch (err) {
+      if (controller.signal.aborted && !activeAiRequest?.signal.aborted) {
+        throw new SolverInputError("__superseded__");
+      }
+      if (err instanceof Error && err.name === "AbortError") {
+        statusEl.textContent = "Request cancelled.";
+        statusEl.className = "help-text circuit-image-status status-error";
+        throw new SolverInputError("__cancelled__");
+      }
+      const message = err instanceof Error ? err.message : String(err);
+      statusEl.textContent = `Analysis failed: ${message}`;
+      statusEl.className = "help-text circuit-image-status status-error";
+      throw new SolverInputError("Timing diagram analysis failed.");
+    } finally {
+      if (activeAiRequest === controller) activeAiRequest = null;
+      byId("solveButton").disabled = false;
+    }
+  }
+  function initTimingImageUpload() {
+    const dropZone = byId("timingImageDropZone");
+    const fileInput = byId("timingImageInput");
+    const placeholder = byId("timingImagePlaceholder");
+    const preview = byId("timingImagePreview");
+    const img = byId("timingImageImg");
+    const status = byId("timingImageStatus");
+    const replaceBtn = byId("timingImageReplaceBtn");
+    const removeBtn = byId("timingImageRemoveBtn");
+    async function handleFile(file) {
+      if (!file.type.match(/^image\/(png|jpeg|webp)$/)) {
+        status.textContent = "Unsupported format. Please use PNG, JPEG, or WebP.";
+        status.className = "help-text circuit-image-status status-error";
+        status.classList.remove("hidden");
+        return;
+      }
+      try {
+        status.textContent = "Processing image...";
+        status.className = "help-text circuit-image-status status-loading";
+        status.classList.remove("hidden");
+        timingImageDataUrl = await preprocessImage(file);
+        img.src = timingImageDataUrl;
+        placeholder.classList.add("hidden");
+        preview.classList.remove("hidden");
+        status.textContent = "Image ready. Click Solve to analyze.";
+        status.className = "help-text circuit-image-status status-success";
+      } catch (e) {
+        status.textContent = "Failed to process image.";
+        status.className = "help-text circuit-image-status status-error";
+        timingImageDataUrl = null;
+      }
+    }
+    dropZone.addEventListener("dragover", (e) => {
+      e.preventDefault();
+      dropZone.classList.add("drag-over");
+    });
+    dropZone.addEventListener("dragleave", () => dropZone.classList.remove("drag-over"));
+    dropZone.addEventListener("drop", (e) => {
+      e.preventDefault();
+      dropZone.classList.remove("drag-over");
+      const file = e.dataTransfer?.files[0];
+      if (file) handleFile(file);
+    });
+    fileInput.addEventListener("change", () => {
+      const file = fileInput.files?.[0];
+      if (file) handleFile(file);
+    });
+    replaceBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      fileInput.click();
+    });
+    removeBtn.addEventListener("click", (e) => {
+      e.stopPropagation();
+      timingImageDataUrl = null;
+      img.src = "";
+      placeholder.classList.remove("hidden");
+      preview.classList.add("hidden");
+      fileInput.value = "";
+      status.classList.add("hidden");
+    });
+    dropZone.addEventListener("click", (e) => {
+      if (e.target.closest(".circuit-image-actions")) return;
+      fileInput.click();
+    });
   }
   function initCircuitImageUpload() {
     const dropZone = byId("circuitImageDropZone");
@@ -3127,15 +3776,57 @@ bool ${functionName}(${args}) {
       fileInput.click();
     });
   }
+  function downloadSvg(targetId) {
+    const container = document.getElementById(targetId);
+    if (!container) return;
+    const svg = container.querySelector("svg");
+    if (!svg) return;
+    const clone = svg.cloneNode(true);
+    const styles = getComputedStyle(document.documentElement);
+    const cssVars = ["--gate-fill", "--gate-stroke", "--wire-low", "--wire-high", "--text-primary", "--bg-card-alt", "--border-color"];
+    cssVars.forEach((v) => {
+      clone.setAttribute(v.replace(/^--/, "data-"), styles.getPropertyValue(v).trim());
+    });
+    const styleEl = document.createElementNS("http://www.w3.org/2000/svg", "style");
+    styleEl.textContent = `
+        text { font-family: 'JetBrains Mono', monospace; }
+        .circuit-wire { fill: none; stroke-width: 2.2; }
+        .wire-active { stroke: #10b981; }
+        .wire-inactive { stroke: #475569; }
+    `;
+    clone.insertBefore(styleEl, clone.firstChild);
+    const serializer = new XMLSerializer();
+    const svgStr = serializer.serializeToString(clone);
+    const blob = new Blob([svgStr], { type: "image/svg+xml;charset=utf-8" });
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${targetId}-circuit.svg`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    URL.revokeObjectURL(url);
+  }
   function init() {
     initInputControls(sound);
     initCircuitImageUpload();
+    initTimingImageUpload();
+    initTruthTableIO();
     setupWaveformControls();
     updateNumericExamples();
     generateTruthTableInput(Number(byId("truthVariables").value));
     initZoomPanControls(sound);
     byId("solveButton").addEventListener("click", () => {
       void solve();
+    });
+    byId("downloadReportBtn")?.addEventListener("click", () => {
+      window.print();
+    });
+    document.querySelectorAll(".download-svg-btn").forEach((btn) => {
+      btn.addEventListener("click", () => {
+        const target = btn.getAttribute("data-target");
+        if (target) downloadSvg(target);
+      });
     });
     const playgroundButtons = [
       ["openBasicBtn", () => state.graphs.basic],

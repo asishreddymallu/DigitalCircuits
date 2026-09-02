@@ -30,7 +30,7 @@ import { clauseToString, termToString } from "../../shared/ts/boolean/formatter"
 import { LIMITS } from "../../shared/ts/boolean/limits";
 import { evaluateCircuit, CircuitGraph } from "./circuits/circuitGraph";
 
-export type InputMode = "expression" | "minterms" | "maxterms" | "dontCare" | "truthTable" | "wordProblem" | "circuitImage";
+export type InputMode = "expression" | "minterms" | "maxterms" | "dontCare" | "truthTable" | "wordProblem" | "circuitImage" | "timingImage";
 export type TruthSelection = "0" | "1" | "X";
 
 export interface RawInputs {
@@ -151,6 +151,9 @@ export function buildSolverModel(raw: RawInputs): SolverModel {
         case "truthTable": return fromTruthSelections(raw.truthSelections ?? []);
         case "wordProblem": return fromWordProblem(raw.wordProblem!);
         case "circuitImage": return fromCircuitImage(raw.circuitImage!);
+        case "timingImage":
+            // Timing image is converted to expression mode in main.ts before reaching here
+            return fromExpression(raw.expression ?? "");
     }
 }
 
