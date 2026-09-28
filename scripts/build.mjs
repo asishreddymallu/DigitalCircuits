@@ -22,7 +22,8 @@ const APPS = {
   web1: { entry: "Web1/src/main.ts", outfile: "Web1/script.js" },
   web2: { entry: "Web2/script.ts", outfile: "Web2/script.js" },
   web3: { entry: "Web3/script.ts", outfile: "Web3/script.js" },
-  web4: { entry: "Web4/src/main.ts", outfile: "Web4/script.js" }
+  web4: { entry: "Web4/src/main.ts", outfile: "Web4/script.js" },
+  web5: { entry: "Web5/script.ts", outfile: "Web5/script.js" }
 };
 
 const targets = process.argv[2] ? [process.argv[2]] : Object.keys(APPS);

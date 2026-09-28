@@ -1434,8 +1434,8 @@
       return;
     }
     const startX = 100;
-    const graphWidth = width - startX - 30;
-    const rowHeight = Math.min(30, Math.floor((height - 20) / signalNames.length));
+    const graphWidth = width - startX - 26;
+    const rowHeight = Math.min(34, Math.floor((height - 20) / signalNames.length));
     const stepX = graphWidth / Math.max(15, state2.history.length - 1);
     ctx.strokeStyle = "rgba(255,255,255,0.04)";
     ctx.lineWidth = 1;
@@ -1454,13 +1454,30 @@
     }
     signalNames.forEach((sigName, sigIdx) => {
       const topY = 15 + sigIdx * rowHeight;
-      const lowY = topY + rowHeight - 6;
-      const highY = topY + 4;
+      const lowY = topY + rowHeight - 8;
+      const highY = topY + 6;
+      const isOutput = sigName.startsWith("F:");
+      const traceColor = isOutput ? "#10b981" : "#38bdf8";
       ctx.font = "bold 11px 'JetBrains Mono', monospace";
-      ctx.fillStyle = sigName.startsWith("F:") ? "#34d399" : "#60a5fa";
+      ctx.fillStyle = traceColor;
       ctx.textAlign = "right";
       ctx.fillText(sigName, startX - 10, lowY - 2);
-      ctx.strokeStyle = sigName.startsWith("F:") ? "#10b981" : "#38bdf8";
+      ctx.strokeStyle = "rgba(255,255,255,0.10)";
+      ctx.lineWidth = 1;
+      ctx.setLineDash([3, 4]);
+      ctx.beginPath();
+      ctx.moveTo(startX, lowY);
+      ctx.lineTo(width - 16, lowY);
+      ctx.moveTo(startX, highY);
+      ctx.lineTo(width - 16, highY);
+      ctx.stroke();
+      ctx.setLineDash([]);
+      ctx.fillStyle = "rgba(148,163,184,0.7)";
+      ctx.font = "9px 'JetBrains Mono', monospace";
+      ctx.textAlign = "left";
+      ctx.fillText("1", width - 12, highY + 3);
+      ctx.fillText("0", width - 12, lowY + 3);
+      ctx.strokeStyle = traceColor;
       ctx.lineWidth = 2;
       ctx.beginPath();
       state2.history.forEach((pt, i) => {
@@ -1478,8 +1495,39 @@
           ctx.lineTo(x, y);
         }
       });
+      const lastPt = state2.history[state2.history.length - 1];
+      const lastY = lastPt.signals[sigName] ?? false ? highY : lowY;
+      ctx.lineTo(startX + (state2.history.length - 1) * stepX + stepX, lastY);
       ctx.stroke();
+      ctx.fillStyle = traceColor;
+      for (let i = 1; i < state2.history.length; i++) {
+        const prevVal = state2.history[i - 1].signals[sigName] ?? false;
+        const val = state2.history[i].signals[sigName] ?? false;
+        if (prevVal !== val) {
+          const x = startX + i * stepX;
+          ctx.beginPath();
+          ctx.arc(x, val ? highY : lowY, 2.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.font = "8.5px 'JetBrains Mono', monospace";
+      ctx.textAlign = "center";
+      for (let i = 0; i < state2.history.length; i++) {
+        const val = state2.history[i].signals[sigName] ?? false;
+        const x = startX + i * stepX;
+        const y = val ? highY : lowY;
+        ctx.fillStyle = "rgba(148,163,184,0.85)";
+        ctx.fillText(val ? "1" : "0", x + stepX / 2, y - 3);
+      }
     });
+    ctx.font = "10px 'JetBrains Mono', monospace";
+    ctx.textAlign = "left";
+    ctx.fillStyle = "#38bdf8";
+    ctx.fillRect(8, height - 14, 8, 3);
+    ctx.fillText("inputs", 20, height - 8);
+    ctx.fillStyle = "#10b981";
+    ctx.fillRect(66, height - 14, 8, 3);
+    ctx.fillText("outputs (F:)", 78, height - 8);
   }
   function getSignalNames(nodes) {
     const names = [];
@@ -1872,6 +1920,7 @@
               timestamp: Date.now()
             });
             runSimulation();
+            recordWaveformSnapshot();
             justToggled = true;
             setTimeout(() => {
               justToggled = false;
@@ -1914,6 +1963,7 @@
         if (!hitNode.config) hitNode.config = {};
         hitNode.config.value = !(hitNode.config.value ?? false);
         runSimulation();
+        recordWaveformSnapshot();
         render();
       }
     });
@@ -1990,7 +2040,12 @@
     const current = state.nodeValues.get(node.id) ?? false;
     state.nodeValues.set(node.id, !current);
     runSimulation();
+    recordWaveformSnapshot();
     render();
+  }
+  function recordWaveformSnapshot() {
+    recordSample(waveformState, state.nodes, state.wires, state.nodeValues);
+    drawWaveformPanel();
   }
   function deleteNode(nodeId) {
     const node = state.nodes.find((n) => n.id === nodeId);

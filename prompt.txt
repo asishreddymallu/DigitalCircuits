@@ -1,0 +1,10 @@
+freebuff --continue 2026-09-28T02-06-27.740Z
+Add a seperate webpage in this project which contains the following sequential circuits.
+A simulation for the following (negative edge triggered)
+1. clock
+2. SR flip flop
+3. JK flip flop 
+4. T flip flop
+5. D flip flop
+A improved version of current playground such that it draws a graph of 0,1 values at the inputs and outputs
+

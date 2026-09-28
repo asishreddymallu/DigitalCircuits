@@ -242,6 +242,7 @@
       const right = parseAND(stream);
       if (right.kind === "xor" || right.kind === "and" || right.kind === "or") {
       }
+      void opToken;
       node = { kind: "xor", left: node, right };
     }
     return node;

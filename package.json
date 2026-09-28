@@ -12,6 +12,7 @@
     "build:web2": "node scripts/build.mjs web2",
     "build:web3": "node scripts/build.mjs web3",
     "build:web4": "node scripts/build.mjs web4",
+    "build:web5": "node scripts/build.mjs web5",
     "test": "vitest run",
     "test:watch": "vitest",
     "test:e2e": "npx playwright test",

@@ -433,6 +433,7 @@ function setupCanvas(): void {
                         timestamp: Date.now(),
                     });
                     runSimulation();
+                    recordWaveformSnapshot();
                     justToggled = true;
                     setTimeout(() => { justToggled = false; }, 300);
                 } else {
@@ -483,6 +484,7 @@ function setupCanvas(): void {
             if (!hitNode.config) hitNode.config = {};
             hitNode.config.value = !(hitNode.config.value ?? false);
             runSimulation();
+            recordWaveformSnapshot();
             render();
         }
     });
@@ -593,7 +595,14 @@ function toggleSourceNode(node: PlaygroundNode): void {
     const current = state.nodeValues.get(node.id) ?? false;
     state.nodeValues.set(node.id, !current);
     runSimulation();
+    recordWaveformSnapshot();
     render();
+}
+
+/** Record an immediate waveform sample (used when inputs/state change). */
+function recordWaveformSnapshot(): void {
+    recordSample(waveformState, state.nodes, state.wires, state.nodeValues);
+    drawWaveformPanel();
 }
 
 function deleteNode(nodeId: string): void {

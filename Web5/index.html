@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <meta name="description" content="Sequential Circuits Simulator - Interactive negative-edge-triggered clock, SR, JK, T and D flip-flops with gate-level schematics and 0/1 waveform timing diagrams.">
+    <title>Sequential Circuits Simulator</title>
+    <link rel="stylesheet" href="../style.css">
+    <link rel="stylesheet" href="style.css">
+    <script src="theme.js"></script>
+    <script src="fx.js"></script>
+</head>
+<body>
+
+<!-- GLOBAL NAVIGATION BAR -->
+<nav class="global-navbar">
+    <div class="nav-container">
+        <a href="../index.html" class="nav-brand">
+            <span class="brand-icon-pulse">⚡</span>
+            <span>Digital Circuits Suite</span>
+            <span class="brand-badge">Tool 5</span>
+        </a>
+        <ul class="nav-links">
+            <li><a href="../index.html" class="nav-link">🏠 Home</a></li>
+            <li><a href="../Web1/index.html" class="nav-link">⚡ Boolean Solver</a></li>
+            <li><a href="../Web2/index.html" class="nav-link">🔧 Circuits Sim</a></li>
+            <li><a href="../Web3/index.html" class="nav-link">🔢 7-Segment Display</a></li>
+            <li><a href="../Web4/index.html" class="nav-link">🎮 Logic Playground</a></li>
+            <li><a href="index.html" class="nav-link active">🧠 Sequential</a></li>
+        </ul>
+        <div class="nav-actions">
+            <button type="button" class="nav-tool-btn sound-toggle-btn" aria-label="Toggle sound">
+                🔊 <span class="sound-label">Sound: ON</span>
+            </button>
+            <button type="button" class="nav-tool-btn theme-toggle-btn" aria-label="Toggle theme">
+                🌙 <span class="theme-label">Dark Mode</span>
+            </button>
+        </div>
+    </div>
+</nav>
+
+<!-- BREADCRUMB BAR -->
+<div class="breadcrumb-bar">
+    <a href="../index.html">Home</a>
+    <span>/</span>
+    <span>Sequential Circuits Simulator</span>
+</div>
+
+<!-- PAGE HEADER -->
+<header class="w4-page-header">
+    <h1>Sequential Circuits Simulator</h1>
+    <p>Negative-edge-triggered flip-flops — SR, JK, T and D — driven by a shared configurable clock, with gate-level schematics and live 0/1 waveform graphs.</p>
+</header>
+
+<!-- SHARED CLOCK PANEL -->
+<section class="w5-clock-panel" id="w5ClockPanel">
+    <div class="w5-clock-header">
+        <span class="w5-clock-title">⏱️ Shared Clock</span>
+        <span class="w5-clock-hint">All flip-flops trigger on the falling (1 → 0) edge of this clock</span>
+    </div>
+    <div class="w5-clock-body">
+        <div class="w5-clock-schematic-wrap" id="w5ClockSchematic"></div>
+        <div class="w5-clock-readout">
+            <span class="w5-clock-value-label">CLK now</span>
+            <span class="w5-clock-badge" id="w5ClockBadge">0</span>
+            <span class="w5-tick-label">Ticks: <kbd id="w5TickCounter">0</kbd></span>
+        </div>
+        <div class="w5-clock-controls" id="w5ClockControls"></div>
+    </div>
+</section>
+
+<!-- FLIP-FLOP PANELS -->
+<main class="w5-panels" id="w5Panels">
+    <!-- Populated by script -->
+</main>
+
+<!-- ========================================================== -->
+<!-- INLINE MANUAL / USER GUIDE                                  -->
+<!-- ========================================================== -->
+<section class="w4-manual-section" id="w5Manual">
+    <div class="w4-manual-container">
+        <div class="section-heading">
+            <span class="section-number">📖</span>
+            <div>
+                <h2>How the Sequential Simulator Works</h2>
+                <p>All flip-flops are negative-edge triggered: state changes only when CLK falls from 1 to 0.</p>
+            </div>
+        </div>
+
+        <div class="w4-manual-grid">
+            <div class="w4-manual-card">
+                <h3>🎯 Quick Start</h3>
+                <ol>
+                    <li>Press <strong>Run</strong> to start the shared clock (or <kbd>Space</kbd>).</li>
+                    <li>Toggle inputs (S, R, J, K, T, D) with the buttons — schematics and wires update live.</li>
+                    <li>Watch the <strong>red ▼ lines</strong> in each waveform: that is where the clock falls and Q updates.</li>
+                    <li>Use <strong>Step</strong> (<kbd>N</kbd>) to advance one half period manually.</li>
+                    <li><strong>Reset All</strong> clears every flip-flop back to Q = 0.</li>
+                </ol>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>🧠 Flip-Flop Reference</h3>
+                <div class="w4-manual-gate-table">
+                    <div class="w4-manual-gate-header"><span>FF</span><span>Inputs</span><span>Behaviour at ↓ edge</span></div>
+                    <div class="w4-manual-gate-row"><span>SR</span><span>S, R</span><span>Set / Reset / Hold (S=R=1 forbidden)</span></div>
+                    <div class="w4-manual-gate-row"><span>JK</span><span>J, K</span><span>Set / Reset / Hold / Toggle</span></div>
+                    <div class="w4-manual-gate-row"><span>T</span><span>T</span><span>Toggle when T=1, hold when T=0</span></div>
+                    <div class="w4-manual-gate-row"><span>D</span><span>D</span><span>Q copies D at the edge</span></div>
+                </div>
+                <p style="margin-top:10px;">Why negative edge? Many real devices (e.g. 74LS76 JK, 7476) are triggered on the falling clock edge — the bubble + triangle symbol on each schematic marks this.</p>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>📊 Reading the Waveforms</h3>
+                <ul>
+                    <li>Each row shows one signal over time: <strong>CLK</strong> (amber), inputs (blue), <strong>Q</strong> (green) and <strong>Q̄</strong> (dashed green).</li>
+                    <li>The 0/1 value of every signal is printed along its trace.</li>
+                    <li>Vertical red dashed lines mark negative clock edges — Q changes exactly at those instants (never while CLK is high).</li>
+                    <li>History keeps the last ~48 samples and scrolls as the clock runs.</li>
+                </ul>
+            </div>
+
+            <div class="w4-manual-card">
+                <h3>⌨️ Controls</h3>
+                <div class="w4-manual-shortcuts">
+                    <div class="w4-manual-shortcut-row"><kbd>Space</kbd> <span>Run / pause the clock</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>N</kbd> <span>Step one half period (pauses first)</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>Click input</kbd> <span>Toggle that flip-flop input</span></div>
+                    <div class="w4-manual-shortcut-row"><kbd>⟲ Q=0</kbd> <span>Reset an individual flip-flop</span></div>
+                </div>
+            </div>
+
+            <div class="w4-manual-card w4-manual-tips">
+                <h3>💡 Tips</h3>
+                <ul>
+                    <li>Set <strong>J = K = 1</strong> (or T = 1) and run the clock: Q toggles once per period — a frequency divider (f/2).</li>
+                    <li>Drive the D flip-flop with a pattern and watch Q repeat it one edge later — that's the "delay" behaviour.</li>
+                    <li>SR with S = R = 1 is highlighted red as <strong>INVALID</strong>; the simulator holds the previous state.</li>
+                    <li>Pause the clock and use <strong>Step</strong> for precise single-edge experiments.</li>
+                </ul>
+            </div>
+        </div>
+    </div>
+</section>
+
+<footer class="site-footer">
+    <h3>Sequential Circuits Simulator</h3>
+    <p>Digital Circuits Suite — Clock • SR • JK • T • D Flip-Flops</p>
+    <p class="footer-small">Negative-edge-triggered simulation with live schematics and 0/1 timing graphs</p>
+</footer>
+
+<script src="script.js"></script>
+</body>
+</html>
